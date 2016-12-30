@@ -8,14 +8,15 @@
 
 static int my_probe(struct platform_device *pdev)
 {
-	const char *string_prop = NULL;
-	struct device_node *pnode = pdev->dev.of_node;
+	const char         *string_prop = NULL;
+	struct device      *dev         = &pdev->dev;
+	struct device_node *node        = dev->of_node;
 
 	if (pnode != NULL &&
 		of_property_read_string(pnode,
 					"string-property",
 					&string_prop) == 0) {
-	printk(KERN_DEBUG "string-property: %s\n", string_prop);
+		dev_info(dev, "string-property: %s\n", string_prop);
 	}
 	return 0;
 }
