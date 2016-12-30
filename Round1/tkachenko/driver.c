@@ -9,10 +9,10 @@
 static int my_probe(struct platform_device *pdev)
 {
 	const char *string_prop = NULL;
-	struct device_node *node = pdev->dev.of_node;
+	struct device_node *pnode = pdev->dev.of_node;
 
-	if (node != NULL &&
-		of_property_read_string(node,
+	if (pnode != NULL &&
+		of_property_read_string(pnode,
 					"string-property",
 					&string_prop) == 0) {
 	printk(KERN_DEBUG "string-property: %s\n", string_prop);
