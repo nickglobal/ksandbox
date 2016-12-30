@@ -8,32 +8,33 @@
 
 static int my_probe(struct platform_device *pdev)
 {
-    const char *string_prop = NULL;
-    struct device_node *node = pdev->dev.of_node;
+	const char *string_prop = NULL;
+	struct device_node *pnode = pdev->dev.of_node;
 
-    if(node != NULL &&
-       of_property_read_string(node, "string-property", &string_prop) == 0)
-    {
-        printk(KERN_DEBUG "string-property: %s\n", string_prop);
-    }
-    return 0;
+	if (pnode != NULL &&
+		of_property_read_string(pnode,
+					"string-property",
+					&string_prop) == 0) {
+	printk(KERN_DEBUG "string-property: %s\n", string_prop);
+	}
+	return 0;
 }
 
 static const struct of_device_id my_of_match[] = {
-    {
-        .compatible = "gl,console-heartbeat",
-    },
-    { },
+	{
+		.compatible = "gl,console-heartbeat",
+	},
+	{ },
 };
 MODULE_DEVICE_TABLE(of, my_of_match);
 
 static struct platform_driver my_driver = {
-    .probe = my_probe,
-    .driver = {
-        .name = "glbbb",
-        .of_match_table = of_match_ptr(my_of_match),
-        .owner = THIS_MODULE,
-    },
+	.probe = my_probe,
+	.driver = {
+		.name = "glbbb",
+		.of_match_table = of_match_ptr(my_of_match),
+		.owner = THIS_MODULE,
+		},
 };
 
 module_platform_driver(my_driver);
