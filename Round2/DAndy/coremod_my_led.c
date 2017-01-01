@@ -5,7 +5,6 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/input.h>
-
 #include <linux/gpio.h>
 #include <linux/stat.h>
 #include <linux/fs.h>
@@ -19,9 +18,10 @@ static const struct of_device_id my_drvr_match[];
 
 static unsigned int gpioLED = 32+24;	/* GPIO1_24 */
 
-
+/*
 #define LEN_MSG 8
 static char buf_msg[LEN_MSG + 1] = {0};
+*/
 
 
 static void get_platform_info(struct platform_device *pdev)
@@ -43,41 +43,35 @@ static void get_platform_info(struct platform_device *pdev)
 
 
 
+static ssize_t sys_led_on(struct class *class, struct class_attribute *attr, char *buf)
+{	
+	ssize_t i = 0;
 
-
-static ssize_t sys_set_led(struct class *class, struct class_attribute *attr,
-	const char *buf, size_t count)
-{
-	static int state = 1;
-
-	if (!count)
-		return 0;
-
-	if (count > LEN_MSG)
-		count = LEN_MSG;
-
-	dev_info(dev, "sys_set_led write %ld\n", (long)count);
-	strncpy(buf_msg, buf, count);
-
-
-	if (buf_msg[0] == 0x31)
-		state = 1;
-	else
-		state = 0;
-
-	dev_info(dev, "sys_set_led %d", state);
-	gpio_set_value(gpioLED, state);
-	return count;
+	i += sprintf(buf, "LED is ON\n");
+	
+	dev_info(dev, "LED is ON\n");
+	gpio_set_value(gpioLED, 1);
+	return i;
 }
 
+static ssize_t sys_led_off(struct class *class, struct class_attribute *attr, char *buf)
+{	
+	ssize_t i = 0;
 
+	i += sprintf(buf, "LED is OFF\n");
+
+	dev_info(dev, "LED is OFF\n");
+	gpio_set_value(gpioLED, 0);
+	return i;
+}
 
 /* <linux/device.h>
 * #define CLASS_ATTR(_name, _mode, _show, _store) \
 * struct class_attribute class_attr_##_name = __ATTR(_name, _mode,
 * _show, _store)
 */
-CLASS_ATTR(led_state, 0664, NULL, &sys_set_led);
+CLASS_ATTR(myled_on, 0664, &sys_led_on, NULL);
+CLASS_ATTR(myled_off, 0664, &sys_led_off, NULL);
 
 static struct class *x_led_class;
 
@@ -100,13 +94,12 @@ static int x_led_init(struct platform_device *pdev)
 	get_platform_info(pdev);
 
 
-
-
 	x_led_class = class_create(THIS_MODULE, "x_led_class");
 	if (IS_ERR(x_led_class))
 		dev_info(dev, "bad class create\n");
 
-	res = class_create_file(x_led_class, &class_attr_led_state);
+	res = class_create_file(x_led_class, &class_attr_myled_on);
+	res = class_create_file(x_led_class, &class_attr_myled_off);
 
 	dev_info(dev, "'x_led_drv' module initialized\n");
 	return 0;
@@ -118,9 +111,10 @@ static int x_led_exit(struct platform_device *pdev)
 {
 		struct device *dev = &pdev->dev;
 
-		class_remove_file(x_led_class, &class_attr_led_state);
+		class_remove_file(x_led_class, &class_attr_myled_on);
+		class_remove_file(x_led_class, &class_attr_myled_off);
 		class_destroy(x_led_class);
-
+				
 		dev_info(dev, "Goodbye, world!\n");
 		return 0;
 }
