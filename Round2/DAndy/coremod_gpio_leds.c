@@ -18,6 +18,9 @@ static struct device *dev;
 static const struct of_device_id my_drvr_match[];
 
 
+#define LED_MODE_OFF		0
+#define LED_MODE_ON			1
+#define LED_MODE_BLINK		2
 
 
 struct x_led_data {
@@ -25,7 +28,7 @@ struct x_led_data {
 	struct gpio_desc *gpiod;
 	u32 time_on;
 	u32 time_off;
-	u8 	blink;
+	u8	mode;
 };
 
 struct gpio_leds_priv {
@@ -97,10 +100,11 @@ static void get_platform_info(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct fwnode_handle *child;
 	const char *name;
+	const char *state;
 	struct gpio_desc *gpiod;
 	struct class *led_class;
 
-	u32 val;
+	int res;
 	u32 i = 0;
 
 	if (np) {
@@ -128,15 +132,31 @@ static void get_platform_info(struct platform_device *pdev)
 				return;/* ERR_PTR(gpiod);*/
 			}
 			gpiod_direction_output(gpiod, 1);
-			gpiod_set_value(gpiod, 1);
+
+			if (fwnode_property_present(child, "default-state")){
+				fwnode_property_read_string(child, "default-state",	&state);
+
+				if (!strcmp(state, "on")){
+					priv->leds[i].mode = LED_MODE_ON;
+					gpiod_set_value(gpiod, 1);
+				}
+				else if (!strcmp(state, "blink")) {
+					gpiod_set_value(gpiod, 0);
+					priv->leds[i].mode = LED_MODE_BLINK;
+				}
+				else {
+					gpiod_set_value(gpiod, 0);
+					priv->leds[i].mode = LED_MODE_OFF;
+				}
+			}
 
 			led_class = class_create(THIS_MODULE, name);
 
 			if (IS_ERR(led_class))
 				dev_info(dev, "bad class create\n");
 
-			class_create_file(led_class, &class_attr_myled_on);
-			class_create_file(led_class, &class_attr_myled_off);
+			res = class_create_file(led_class, &class_attr_myled_on);
+			res = class_create_file(led_class, &class_attr_myled_off);
 
 			priv->leds[i].led_class = led_class;
 
@@ -154,11 +174,7 @@ static void get_platform_info(struct platform_device *pdev)
 
 static int x_led_init(struct platform_device *pdev)
 {
-	int res;
 	const struct of_device_id *match;
-	struct fwnode_handle *child;
-	const char *name = "unlabelled_led";
-	static struct gpio_desc *gpiod;
 
 	dev = &pdev->dev;
 
