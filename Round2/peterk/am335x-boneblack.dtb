@@ -444,7 +444,7 @@
 
         string-property = "Peter Kulakov";
 	led@4 {
-		label = "led2";
+		label = "pk_led_2";
 		gpios = <&gpio1 23 GPIO_ACTIVE_HIGH>;
 	};
     };
