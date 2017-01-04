@@ -44,7 +44,8 @@ static struct platform_driver ek_drv_platform_driver = {
 	.driver = {
 		.name = EK_DRV_NAME,
 		.owner = THIS_MODULE,
-		.of_match_table = ek_drv_of_match,
+		/* .of_match_table = of_match_ptr - OK */
+		.of_match_table = of_match_ptr(ek_drv_of_match), /* verify */
 	},
 	.probe =    ek_drv_platform_probe,
 	.remove =   ek_drv_platform_remove,
@@ -62,18 +63,18 @@ static int ek_drv_platform_probe(struct platform_device *pdev)
 
 	FNIN;
 
-	if (pdev == 0) {
+	if (pdev == NULL) {
 		pr_err(EK_DRV_TAG "zero parameter\n");
 		rc = -ENODEV;
 		goto EXIT;
 	}
 
 	of_id = of_match_device(ek_drv_of_match, &pdev->dev);
-	if (of_id == 0) {
+	if (of_id == NULL) {
 		dev_err(&pdev->dev, EK_DRV_TAG "cannot find device matching\n");
 		rc = -ENODEV;
 		goto EXIT;
-	} else if (pdev->dev.of_node == 0) {
+	} else if (pdev->dev.of_node == NULL) {
 		dev_err(&pdev->dev, EK_DRV_TAG "cannot find device node\n");
 		rc = -ENODEV;
 		goto EXIT;
@@ -108,7 +109,8 @@ static int ek_drv_platform_probe(struct platform_device *pdev)
 						proplen);
 			dev_info(&pdev->dev,
 				EK_DRV_TAG "x = %d, property = %s\n",
-				x, ek_drv_property);
+				x, (x == 0) ? ek_drv_property : ":(");
+
 		}
 	}
 
@@ -120,7 +122,8 @@ static int ek_drv_platform_probe(struct platform_device *pdev)
 				EK_DRV_PROPERTY_NAME,
 				&pprop);
 	dev_info(&pdev->dev,
-			EK_DRV_TAG "x = %d, property = %s\n", x, pprop);
+		EK_DRV_TAG "x = %d, property = %s\n",
+		x, (x == 0) ? pprop : ":(");
 
 
 EXIT:
