@@ -9,6 +9,7 @@
 #include <linux/leds.h>
 #include <linux/stat.h>
 #include <linux/fs.h>
+#include <linux/timer.h>
 
 #define DRIVER_NAME			"x_led_drv"
 
@@ -23,12 +24,18 @@ static const struct of_device_id my_drvr_match[];
 #define LED_MODE_BLINK		2
 
 
+#define DEFAULT_ON_TIME		500
+#define DEFAULT_OFF_TIME	500
+
+
 struct x_led_data {
 	struct class *led_class;
 	struct gpio_desc *gpiod;
-	u32 time_on;
-	u32 time_off;
+	struct timer_list timer;
+	u32 on_time;
+	u32 off_time;
 	u8	mode;
+	u8	curr_state;
 };
 
 struct gpio_leds_priv {
@@ -46,17 +53,39 @@ static inline int sizeof_gpio_leds_priv(int num_leds)
 }
 
 
-static struct gpio_desc *get_gpiod(struct class *class)
+
+
+static struct x_led_data *get_led(struct class *class)
 {
-	struct gpio_desc *gpiod;
+	struct x_led_data *led;
 	u32 i;
 
 	for (i = 0; i < priv->num_leds; i++) {
-		if (priv->leds[i].led_class == class)
-			gpiod = priv->leds[i].gpiod;
+		if (priv->leds[i].led_class == class){
+			led = &priv->leds[i];
+			break;
+		}
 	}
 
-	return gpiod;
+	return led;
+}
+
+
+
+static void timer_callback(unsigned long param)
+{
+	struct x_led_data *led = (struct x_led_data *)param;
+
+	if(!led)
+		dev_err(dev, "timer_callback ERROR\n");
+
+	led->curr_state ^= 1;
+
+	gpiod_set_value(led->gpiod, led->curr_state);
+	mod_timer(&led->timer, led->curr_state ?
+			jiffies + led->off_time * HZ / 1000 :
+			jiffies + led->on_time * HZ / 1000);	
+			
 }
 
 
@@ -65,11 +94,16 @@ static ssize_t sys_led_on(struct class *class,
 	struct class_attribute *attr, char *buf)
 {
 	ssize_t i = 0;
+	struct x_led_data *led = get_led(class);
 
-	i += sprintf(buf, "LED is ON\n");
+	i += sprintf(buf, "LED mode = ON\n");
+	dev_info(dev, "LED mode = ON\n");
 
-	dev_info(dev, "LED is ON\n");
-	gpiod_set_value(get_gpiod(class), 1);
+	if (timer_pending(&led->timer))
+		del_timer_sync(&led->timer);
+
+	led->mode = LED_MODE_ON;
+	gpiod_set_value(led->gpiod, 1);
 	return i;
 }
 
@@ -78,11 +112,54 @@ static ssize_t sys_led_off(struct class *class,
 {
 	ssize_t i = 0;
 
-	i += sprintf(buf, "LED is OFF\n");
+	struct x_led_data *led = get_led(class);
 
-	dev_info(dev, "LED is OFF\n");
-	gpiod_set_value(get_gpiod(class), 0);
+	i += sprintf(buf, "LED mode = OFF\n");
+	dev_info(dev, "LED mode = OFF\n");
+
+	if (timer_pending(&led->timer))
+		del_timer_sync(&led->timer);
+
+	led->mode = LED_MODE_OFF;
+	gpiod_set_value(led->gpiod, 0);
 	return i;
+}
+
+static ssize_t sys_led_blink(struct class *class,
+	struct class_attribute *attr, char *buf)
+{
+	ssize_t i = 0;
+
+	struct x_led_data *led = get_led(class);
+	//struct x_led_data *led = &priv->leds[0];
+
+	if(!led)
+		dev_err(dev, "sys_led_blink ERROR\n");
+
+	i += sprintf(buf, "LED mode = BLINK\n");
+	dev_info(dev, "LED mode = BLINK\n");
+
+	led->mode = LED_MODE_BLINK;
+	mod_timer(&led->timer, jiffies + led->on_time);
+	return i;
+}
+
+
+static ssize_t sys_set_on_time(struct class *class,
+	struct class_attribute *attr, const char *buf, size_t count)
+{
+	dev_info(dev, "sys_set_on_time\n");
+	// TODO: add setting on_time up
+	return 0;
+}
+
+
+static ssize_t sys_set_off_time(struct class *class,
+	struct class_attribute *attr, const char *buf, size_t count)
+{
+	dev_info(dev, "sys_set_off_time\n");
+	// TODO: add setting off_time up
+	return 0;
 }
 
 
@@ -93,6 +170,9 @@ static ssize_t sys_led_off(struct class *class,
 */
 CLASS_ATTR(myled_on, 0664, &sys_led_on, NULL);
 CLASS_ATTR(myled_off, 0664, &sys_led_off, NULL);
+CLASS_ATTR(myled_blink, 0664, &sys_led_blink, NULL);
+CLASS_ATTR(myled_on_time, 0664, NULL, &sys_set_on_time);
+CLASS_ATTR(myled_off_time, 0664, NULL, &sys_set_off_time);
 
 
 static void get_platform_info(struct platform_device *pdev)
@@ -105,6 +185,7 @@ static void get_platform_info(struct platform_device *pdev)
 	struct class *led_class;
 
 	int res;
+	u32 value;
 	u32 i = 0;
 
 	if (np) {
@@ -126,6 +207,7 @@ static void get_platform_info(struct platform_device *pdev)
 			fwnode_property_read_string(child, "label",	&name);
 
 			gpiod = devm_get_gpiod_from_child(dev, NULL, child);
+			
 
 			if (IS_ERR(gpiod)) {
 				dev_err(dev, "fail devm_get_gpiod_from_child()\n");
@@ -133,22 +215,53 @@ static void get_platform_info(struct platform_device *pdev)
 			}
 			gpiod_direction_output(gpiod, 1);
 
+			dev_info(dev, "added led - \"%s\"\n", name);
+
 			if (fwnode_property_present(child, "default-state")){
 				fwnode_property_read_string(child, "default-state",	&state);
 
 				if (!strcmp(state, "on")){
 					priv->leds[i].mode = LED_MODE_ON;
+					priv->leds[i].curr_state = 1;
 					gpiod_set_value(gpiod, 1);
 				}
 				else if (!strcmp(state, "blink")) {
-					gpiod_set_value(gpiod, 0);
 					priv->leds[i].mode = LED_MODE_BLINK;
+					priv->leds[i].curr_state = 1;
+					gpiod_set_value(gpiod, 0);
 				}
 				else {
-					gpiod_set_value(gpiod, 0);
+					priv->leds[i].curr_state = 0;
 					priv->leds[i].mode = LED_MODE_OFF;
+					gpiod_set_value(gpiod, 0);
 				}
+
+
+				dev_info(dev, "default-state - %s\n", state);
 			}
+			
+			//priv->leds[i].timer = TIMER_INITIALIZER(timer_callback, 1000, 0);
+
+			//init_timer(&priv->leds[i].timer);
+			//priv->leds[i].timer.data = (unsigned long)priv->leds[i].led_class;
+
+
+			if (!fwnode_property_read_u32(child, "on_time", &value))
+				priv->leds[i].on_time = value;
+			else
+				priv->leds[i].on_time = DEFAULT_ON_TIME;
+
+			if (!fwnode_property_read_u32(child, "off_time", &value))
+				priv->leds[i].off_time = value;
+			else
+				priv->leds[i].off_time = DEFAULT_OFF_TIME;
+
+			setup_timer(&priv->leds[i].timer, timer_callback, (unsigned long)&priv->leds[i]);
+
+			if (priv->leds[i].mode == LED_MODE_BLINK)
+				mod_timer(&priv->leds[i].timer, jiffies + priv->leds[i].on_time);
+
+			dev_info(dev, "on_time = %d; off_time = %d;\n", priv->leds[i].on_time, priv->leds[i].off_time);
 
 			led_class = class_create(THIS_MODULE, name);
 
@@ -157,6 +270,10 @@ static void get_platform_info(struct platform_device *pdev)
 
 			res = class_create_file(led_class, &class_attr_myled_on);
 			res = class_create_file(led_class, &class_attr_myled_off);
+			res = class_create_file(led_class, &class_attr_myled_blink);
+
+			res = class_create_file(led_class, &class_attr_myled_on_time);
+			res = class_create_file(led_class, &class_attr_myled_off_time);			
 
 			priv->leds[i].led_class = led_class;
 
@@ -199,13 +316,21 @@ static int x_led_exit(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct class *led_class;
+	struct x_led_data *led;
 	u32 i = 0;
 
 	for (i = 0; i < priv->num_leds; i++) {
 		led_class = priv->leds[i].led_class;
 
+		led = get_led(led_class);
+	
+		if (timer_pending(&led->timer))
+			del_timer_sync(&led->timer);
+
 		class_remove_file(led_class, &class_attr_myled_on);
 		class_remove_file(led_class, &class_attr_myled_off);
+		class_remove_file(led_class, &class_attr_myled_on_time);
+		class_remove_file(led_class, &class_attr_myled_off_time);
 		class_destroy(led_class);
 	}
 
