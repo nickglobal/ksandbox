@@ -20,8 +20,6 @@
 /* Forward declarations */
 static int gpio_led_probe(struct platform_device *pdev);
 static int gpio_led_remove(struct platform_device *pdev);
-static ssize_t control_show(struct class *class, struct class_attribute *attr, char *buf);
-static ssize_t control_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count);
 
 
 static const struct of_device_id of_gpio_leds_match[] = {
@@ -47,12 +45,12 @@ struct gpio_led_data {
 	struct gpio_desc *gpiod;
 	struct timer_list timer;
 	char is_on;
+	struct class_attribute	class_attr_control;
 };
 
 struct gpio_leds_table {
 	int			num_leds;
 	struct class		*control_class;
-	struct class_attribute	class_attr_control;
 	struct gpio_led_data	led_data[];
 };
 
@@ -148,39 +146,67 @@ static int gpio_leds_release(struct platform_device *pdev, struct gpio_leds_tabl
 }
 
 
-static ssize_t control_show(struct class *class, struct class_attribute *attr, char *buf)
+static ssize_t led_ctrl_show(struct class *class, struct class_attribute *attr, char *buf)
 {
-	int size, i;
-	struct gpio_leds_table *leds = container_of(attr, struct gpio_leds_table, class_attr_control);
+	int size;
+	struct gpio_led_data *led_data = container_of(attr, struct gpio_led_data, class_attr_control);
 
-	size = sprintf(buf, "Total LEDs = %d\n", leds->num_leds);
-
-	for (i = 0; i < leds->num_leds; i++)
-		size += sprintf(buf + size,
-			"%d: \"%s\", on-time = %d, off-time = %d\n",
-			i, leds->led_data[i].label, leds->led_data[i].on_time, leds->led_data[i].off_time);
-
+	size = sprintf(buf, "%d %d\n", led_data->on_time, led_data->off_time);
 	return size;
 }
 
-static ssize_t control_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count)
+static ssize_t led_ctrl_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count)
 {
-	int num, on_time, off_time;
 	int ret;
-	struct gpio_leds_table *leds = container_of(attr, struct gpio_leds_table, class_attr_control);
+	int on_time, off_time;
+	struct gpio_led_data *led_data = container_of(attr, struct gpio_led_data, class_attr_control);
 
-	/* Read parameters */
-	ret = sscanf(buf, "%d %d %d", &num, &on_time, &off_time);
-	/* Check parameters */
-	if (ret != 3)
-		return 0;
-	if (num >= leds->num_leds)
+	ret = sscanf(buf, "%d %d", &on_time, &off_time);
+	if (ret != 2)
 		return 0;
 
-	leds->led_data[num].on_time = on_time;
-	leds->led_data[num].off_time = off_time;
+	led_data->on_time = on_time;
+	led_data->off_time = off_time;
 
 	return count;
+}
+
+static int led_ctrl_create(struct platform_device *pdev, struct gpio_leds_table *leds)
+{
+	int i, ret;
+
+	/* Create sysfs class to control LEDs */
+	leds->control_class = class_create(THIS_MODULE, CLASS_NAME);
+	if (IS_ERR(leds->control_class))
+		return PTR_ERR(leds->control_class);
+
+	for (i = 0; i < leds->num_leds; i++) {
+		/* Fill the attribute structure */
+		leds->led_data[i].class_attr_control.attr.name = leds->led_data[i].label;
+		leds->led_data[i].class_attr_control.attr.mode = VERIFY_OCTAL_PERMISSIONS(0664);
+		leds->led_data[i].class_attr_control.show = &led_ctrl_show;
+		leds->led_data[i].class_attr_control.store = &led_ctrl_store;
+		/* Create file */
+		ret = class_create_file(leds->control_class, &(leds->led_data[i].class_attr_control));
+		if (IS_ERR_VALUE(ret)) {
+			class_destroy(leds->control_class);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+static int led_ctrl_destroy(struct platform_device *pdev, struct gpio_leds_table *leds)
+{
+	int i;
+
+	for (i = 0; i < leds->num_leds; i++)
+		class_remove_file(leds->control_class, &(leds->led_data[i].class_attr_control));
+
+	class_destroy(leds->control_class);
+
+	return 0;
 }
 
 
@@ -196,21 +222,9 @@ static int gpio_led_probe(struct platform_device *pdev)
 	if (IS_ERR(leds))
 		return PTR_ERR(leds);
 
-	/* Create sysfs class to control LEDs */
-	leds->control_class = class_create(THIS_MODULE, CLASS_NAME);
-	if (IS_ERR(leds->control_class))
-		return PTR_ERR(leds->control_class);
-	/* Fill the attribute structure */
-	leds->class_attr_control.attr.name = __stringify(control);
-	leds->class_attr_control.attr.mode = VERIFY_OCTAL_PERMISSIONS(0664);
-	leds->class_attr_control.show = &control_show;
-	leds->class_attr_control.store = &control_store;
-	ret = class_create_file(leds->control_class, &(leds->class_attr_control));
-	if (IS_ERR_VALUE(ret)) {
-		class_remove_file(leds->control_class, &(leds->class_attr_control));
-		class_destroy(leds->control_class);
+	ret = led_ctrl_create(pdev, leds);
+	if (IS_ERR_VALUE(ret))
 		return ret;
-	}
 
 	gpio_leds_configure(pdev, leds);
 	platform_set_drvdata(pdev, leds);
@@ -227,9 +241,9 @@ static int gpio_led_remove(struct platform_device *pdev)
 
 	leds = platform_get_drvdata(pdev);
 
+	led_ctrl_destroy(pdev, leds);
 	gpio_leds_release(pdev, leds);
-	class_remove_file(leds->control_class, &(leds->class_attr_control));
-	class_destroy(leds->control_class);
+
 	return 0;
 }
 
