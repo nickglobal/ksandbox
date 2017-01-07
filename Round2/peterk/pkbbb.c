@@ -6,107 +6,102 @@
 #include <linux/of_device.h>
 #include <linux/gpio/consumer.h>
 #include <linux/timer.h>
+#include <linux/spinlock.h>
 
-/* params */
-static int time_on  = 500; /* time LED ON in ms */
-static int time_off = 500; /* time LED ON in ms */
-module_param_named(on,  time_on,  int, S_IRUGO);
-module_param_named(off, time_off, int, S_IRUGO);
+struct pk_led {
+	unsigned int on;
+	unsigned int off;
+	const char *name;
+	struct timer_list timer;
+	struct class class_led;
+	struct gpio_desc *gpiod;
+	spinlock_t lock;
+};
 
-/* GPIO stuff */
-static struct gpio_desc *gpiod;
+static int num_leds;
+static struct pk_led *leds;
 
-/* Timer stuff */
-static void blink(unsigned long param);
-static struct timer_list pk_timer = TIMER_INITIALIZER(blink, 1000, 0);
-static void blink(unsigned long param)
+/**
+ * led_logic - controlls LED state
+ * @my_led: pointer to led data structure
+ *
+ * Determines if LED should be set to permanently ON or OFF
+ * (if corresponding on and off parameters equal 0
+ * Rise a timer if LED is in blink mode
+ *
+ * RETURNS:
+ * new state of LED
+ */
+void led_logic(struct pk_led *my_led)
 {
-	int val = gpiod_get_value(gpiod);
+	unsigned long exp;
+	int val;
 
-	gpiod_set_value(gpiod, !val);
-	mod_timer(&pk_timer, val ?
-			jiffies + time_off * HZ / 1000 :
-			jiffies + time_on * HZ / 1000);
+	spin_lock_bh(&my_led->lock);
+
+	val = gpiod_get_value(my_led->gpiod);
+
+	/* kill timer if we are in 'always on' or 'always off' mode */
+	if (my_led->on & my_led->off & timer_pending(&my_led->timer))
+		del_timer_sync(&my_led->timer);
+
+	/* find out new state */
+	if (my_led->on <= 0) {
+		/* off */
+		val = 0;
+	} else if (my_led->off <= 0) {
+		/* on */
+		val = 1;
+	} else {
+		/* blink: rise timer and invert state */
+		exp = val ?
+				jiffies + my_led->off * HZ / 1000 :
+				jiffies + my_led->on  * HZ / 1000;
+		if (timer_pending(&my_led->timer))
+			mod_timer(&my_led->timer, exp); /* continue blinking */
+		else {
+			/* timer expired, restart it */
+			my_led->timer.expires = exp;
+			add_timer(&my_led->timer);
+		}
+		val = !val;
+	}
+	gpiod_set_value(my_led->gpiod, val);
+
+	spin_unlock_bh(&my_led->lock);
 }
 
-/* set LED mode:
- *  0 - off
- *  1 - on
- *  2 - blink according time_on, time_off
- */
-void set_pk_led(int mode)
+/* Timer stuff */
+static void blink(unsigned long param)
 {
-	if (timer_pending(&pk_timer))
-		del_timer_sync(&pk_timer);
-	if ((mode == 0) || (time_on <= 0)) {
-		pr_info("pkbbb: set led off.\n");
-		gpiod_set_value(gpiod, 0);
-	} else if ((mode == 1) || (time_off <= 0)) {
-		pr_info("pkbbb: set led off.\n");
-		gpiod_set_value(gpiod, 1);
-	} else {
-		/* blink */
-		pr_info("pkbbb: set led blink: %d ms ON, %d ms off\n",
-				time_on, time_off);
-		gpiod_set_value(gpiod, 1);
-		pk_timer.expires = jiffies + time_off * HZ / 1000;
-		add_timer(&pk_timer);
-	}
+	led_logic((struct pk_led *)param);
 }
 
 /* sysfs entry stuff */
-
-/* sysfs: state */
-static ssize_t led_show_state(struct class *class,
-		struct class_attribute *attr, char *buf)
-{
-	if (timer_pending(&pk_timer)) {
-		pr_info("pkbbb: read: led is blinking\n");
-		sprintf(buf, "2");
-	} else if (gpiod_get_value(gpiod)) {
-		pr_info("pkbbb: read: led is ON\n");
-		sprintf(buf, "1");
-	} else {
-		pr_info("pkbbb: read: led is OFF\n");
-		sprintf(buf, "0");
-	}
-
-	return strlen(buf);
-}
-
-static ssize_t led_store_state(struct class *class,
-		struct class_attribute *attr, const char *buf,
-		size_t count)
-{
-	int mode = 0;
-
-	if (count == 0)
-		set_pk_led(0);
-	else {
-		if (kstrtoint (buf, 10, &mode))
-			return -EINVAL;
-		set_pk_led(mode);
-	}
-	return count;
-}
 
 /* sysfs: on */
 static ssize_t led_show_on(struct class *class,
 		struct class_attribute *attr, char *buf)
 {
-	sprintf(buf, "%d", time_on);
+	struct pk_led *my_led = container_of(class, struct pk_led, class_led);
+
+	sprintf(buf, "%d", my_led->on);
 	return strlen(buf);
 }
 static ssize_t led_store_on(struct class *class,
 		struct class_attribute *attr, const char *buf,
 		size_t count)
 {
+	struct pk_led *my_led = container_of(class, struct pk_led, class_led);
+
 	if (count) {
-		if (kstrtoint (buf, 10, &time_on))
+		if (kstrtoint (buf, 10, &my_led->on))
 			return -EINVAL;
 	} else
-		time_on = 0;
-	set_pk_led(2);
+		my_led->on = 0;
+
+	led_logic(my_led);
+
 	return count;
 }
 
@@ -114,25 +109,28 @@ static ssize_t led_store_on(struct class *class,
 static ssize_t led_show_off(struct class *class,
 		struct class_attribute *attr, char *buf)
 {
-	sprintf(buf, "%d", time_off);
+	struct pk_led *my_led = container_of(class, struct pk_led, class_led);
+
+	sprintf(buf, "%d", my_led->off);
 	return strlen(buf);
 }
 static ssize_t led_store_off(struct class *class,
 		struct class_attribute *attr, const char *buf,
 		size_t count)
 {
+	struct pk_led *my_led = container_of(class, struct pk_led, class_led);
+
 	if (count) {
-		if (kstrtoint (buf, 10, &time_off))
+		if (kstrtoint (buf, 10, &my_led->off))
 			return -EINVAL;
 	} else
-		time_off = 0;
-	set_pk_led(2);
+		my_led->off = 0;
+
+	led_logic(my_led);
+
 	return count;
 }
 
-static struct class *class_led;
-struct class_attribute class_attr_led_state = __ATTR(state, 0664,
-		led_show_state, led_store_state);
 struct class_attribute class_attr_led_on = __ATTR(on, 0664,
 		led_show_on, led_store_on);
 struct class_attribute class_attr_led_off = __ATTR(off, 0664,
@@ -150,9 +148,9 @@ static int pkbbb_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	const struct of_device_id *match;
-	int err;
+	int res = 0;
 	struct fwnode_handle *child;
-	const char *name = "pk_led";
+	int i;
 
 	match = of_match_device(of_match_ptr(pkbbb_of_match), dev);
 	if (!match) {
@@ -160,59 +158,98 @@ static int pkbbb_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	/* init LED */
+	num_leds = device_get_child_node_count(dev);
+	if (!num_leds)
+		return -ENODEV;
+
+	leds = devm_kzalloc(dev, sizeof(struct pk_led)*num_leds, GFP_KERNEL);
+	if (!leds)
+		return -ENOMEM;
+
+	dev_info(dev, "Register %d LEDs:\n", num_leds);
+
+	/* init LEDs */
+	i = -1;
 	device_for_each_child_node(dev, child) {
-		gpiod = devm_get_gpiod_from_child(dev, NULL, child);
-		if (IS_ERR(gpiod)) {
+		i++;
+		/* defaults permanently ON */
+		leds[i].on = 1000;
+		leds[i].off = 0;
+		leds[i].name = "pk_led";
+
+		leds[i].gpiod = devm_get_gpiod_from_child(dev, NULL, child);
+		if (IS_ERR(leds[i].gpiod)) {
 			dev_err(dev, "fail devm_get_gpiod_from_child()\n");
-			return PTR_ERR(gpiod);
+			res = PTR_ERR(leds[i].gpiod);
+			continue;
 		}
 
 		if (fwnode_property_present(child, "label"))
-			fwnode_property_read_string(child, "label",	&name);
+			fwnode_property_read_string(child, "label",
+					&leds[i].name);
 
-		dev_info(dev, "Register \"%s\" LED\n", name);
+		if (fwnode_property_present(child, "on"))
+			fwnode_property_read_u32(child, "on", &leds[i].on);
 
-		err = gpiod_direction_output(gpiod, 1);
-		if (err < 0) {
-			dev_err(dev, "fail gpiod_direction_output()\n");
-			return err;
+		if (fwnode_property_present(child, "off"))
+			fwnode_property_read_u32(child, "off", &leds[i].off);
+
+
+		dev_info(dev, "Register #%d \"%s\" LED with params: on %u, off %u\n",
+				i, leds[i].name, leds[i].on, leds[i].off);
+
+		/* config sysfs entries */
+		leds[i].class_led.name = leds[i].name;
+		leds[i].class_led.owner = THIS_MODULE;
+		res = class_register(&leds[i].class_led);
+		if (res) {
+			dev_err(dev, "fail register class\n");
+			continue;
 		}
 
-		class_led = class_create(THIS_MODULE, name);
-		if (IS_ERR(class_led)) {
-			dev_err(dev, "fail create class pk_led\n");
-			return PTR_ERR(class_led);
-		}
-
-		class_attr_led_state.attr.mode = 0666;
-		err = class_create_file(class_led, &class_attr_led_state);
-		if (err < 0)
-			dev_err(dev, "fail create class file state\n");
 		class_attr_led_on.attr.mode = 0666;
-		err = class_create_file(class_led, &class_attr_led_on);
-		if (err < 0)
+		res = class_create_file(&leds[i].class_led, &class_attr_led_on);
+		if (res < 0)
 			dev_err(dev, "fail create class file state\n");
 		class_attr_led_off.attr.mode = 0666;
-		err = class_create_file(class_led, &class_attr_led_off);
-		if (err < 0)
+		res = class_create_file(&leds[i].class_led,
+				&class_attr_led_off);
+		if (res < 0)
 			dev_err(dev, "fail create class file state\n");
 
-		set_pk_led(2);
-	}
+		/* Spinlock */
+		spin_lock_init(&leds[i].lock);
 
-	return 0;
+		/* config GPIO */
+		res = gpiod_direction_output(leds[i].gpiod, 0);
+		if (res < 0) {
+			dev_err(dev, "fail gpiod_direction_output()\n");
+			continue;
+		}
+
+		/* rize timer */
+		init_timer(&leds[i].timer);
+		leds[i].timer.data = (unsigned long)&leds[i];
+		leds[i].timer.expires = jiffies+1000;
+		leds[i].timer.function = blink;
+		led_logic(&leds[i]);
+	}
+	return res;
 }
 
 static int pkbbb_remove(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
+	int i;
 
 	dev_info(dev, "remove...\n");
-	class_remove_file(class_led, &class_attr_led_state);
-	class_destroy(class_led);
-	if (timer_pending(&pk_timer))
-		del_timer_sync(&pk_timer);
+	for (i = 0; i < num_leds; i++) {
+		class_remove_file(&leds[i].class_led, &class_attr_led_on);
+		class_remove_file(&leds[i].class_led, &class_attr_led_off);
+		class_unregister(&leds[i].class_led);
+		if (timer_pending(&leds[i].timer))
+			del_timer_sync(&leds[i].timer);
+	}
 	return 0;
 }
 
@@ -226,17 +263,7 @@ static struct platform_driver pkbbb_driver = {
 	},
 };
 
-static int __init mod_init(void)
-{
-	return platform_driver_register(&pkbbb_driver);
-}
-module_init(mod_init);
-
-static void __exit mod_exit(void)
-{
-	platform_driver_unregister(&pkbbb_driver);
-}
-module_exit(mod_exit);
+module_platform_driver(pkbbb_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Peter Kulakov");

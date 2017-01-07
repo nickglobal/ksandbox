@@ -443,9 +443,29 @@
         status = "okay";
 
         string-property = "Peter Kulakov";
+	led@2 {
+		label = "pk_led_0";
+		gpios = <&gpio1 21 GPIO_ACTIVE_HIGH>;
+		on = <1000>;
+		off = <0>;
+	};
+	led@3 {
+		label = "pk_led_1";
+		gpios = <&gpio1 22 GPIO_ACTIVE_HIGH>;
+		on = <4>;
+		off = <20>;
+	};
 	led@4 {
 		label = "pk_led_2";
 		gpios = <&gpio1 23 GPIO_ACTIVE_HIGH>;
+		on = <0>;
+		off = <1000>;
+	};
+	led@5 {
+		label = "pk_led_3";
+		gpios = <&gpio1 24 GPIO_ACTIVE_HIGH>;
+		on = <500>;
+		off = <500>;
 	};
     };
 };
