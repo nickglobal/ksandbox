@@ -464,8 +464,8 @@
 	led@5 {
 		label = "pk_led_3";
 		gpios = <&gpio1 24 GPIO_ACTIVE_HIGH>;
-		on = <500>;
-		off = <500>;
+		on = <100>;
+		off = <900>;
 	};
     };
 };

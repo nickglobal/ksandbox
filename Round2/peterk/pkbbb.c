@@ -37,8 +37,6 @@ void led_logic(struct pk_led *my_led)
 	unsigned long exp;
 	int val;
 
-	spin_lock_bh(&my_led->lock);
-
 	val = gpiod_get_value(my_led->gpiod);
 
 	/* kill timer if we are in 'always on' or 'always off' mode */
@@ -67,14 +65,16 @@ void led_logic(struct pk_led *my_led)
 		val = !val;
 	}
 	gpiod_set_value(my_led->gpiod, val);
-
-	spin_unlock_bh(&my_led->lock);
 }
 
 /* Timer stuff */
 static void blink(unsigned long param)
 {
-	led_logic((struct pk_led *)param);
+	struct pk_led *my_led = (struct pk_led *)param;
+
+	spin_lock_bh(&my_led->lock);
+	led_logic(my_led);
+	spin_unlock_bh(&my_led->lock);
 }
 
 /* sysfs entry stuff */
@@ -85,7 +85,9 @@ static ssize_t led_show_on(struct class *class,
 {
 	struct pk_led *my_led = container_of(class, struct pk_led, class_led);
 
+	spin_lock_bh(&my_led->lock);
 	sprintf(buf, "%d", my_led->on);
+	spin_unlock_bh(&my_led->lock);
 	return strlen(buf);
 }
 static ssize_t led_store_on(struct class *class,
@@ -94,6 +96,7 @@ static ssize_t led_store_on(struct class *class,
 {
 	struct pk_led *my_led = container_of(class, struct pk_led, class_led);
 
+	spin_lock_bh(&my_led->lock);
 	if (count) {
 		if (kstrtoint (buf, 10, &my_led->on))
 			return -EINVAL;
@@ -101,6 +104,7 @@ static ssize_t led_store_on(struct class *class,
 		my_led->on = 0;
 
 	led_logic(my_led);
+	spin_unlock_bh(&my_led->lock);
 
 	return count;
 }
@@ -111,7 +115,9 @@ static ssize_t led_show_off(struct class *class,
 {
 	struct pk_led *my_led = container_of(class, struct pk_led, class_led);
 
+	spin_lock_bh(&my_led->lock);
 	sprintf(buf, "%d", my_led->off);
+	spin_unlock_bh(&my_led->lock);
 	return strlen(buf);
 }
 static ssize_t led_store_off(struct class *class,
@@ -120,6 +126,7 @@ static ssize_t led_store_off(struct class *class,
 {
 	struct pk_led *my_led = container_of(class, struct pk_led, class_led);
 
+	spin_lock_bh(&my_led->lock);
 	if (count) {
 		if (kstrtoint (buf, 10, &my_led->off))
 			return -EINVAL;
@@ -127,6 +134,7 @@ static ssize_t led_store_off(struct class *class,
 		my_led->off = 0;
 
 	led_logic(my_led);
+	spin_unlock_bh(&my_led->lock);
 
 	return count;
 }
