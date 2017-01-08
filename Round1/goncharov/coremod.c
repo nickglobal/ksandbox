@@ -3,10 +3,11 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/stat.h>
+#include <linux/of_device.h>
 
 //------------------------------------------------------------------------------
 #define DRIVER_AUTHOR  "Stanislav Goncharov"
-#define DRIVER_DESC "A Round1 Test Driver."
+#define DRIVER_DESC    "A Round1 Test Driver"
 
 //------------------------------------------------------------------------------
 static const struct of_device_id sgobbb_of_match[] = {
@@ -60,24 +61,7 @@ static struct platform_driver sgobbb_driver = {
 };
 
 //------------------------------------------------------------------------------
-static int __init sgobbb_mod_init(void)
-{
-	struct device *dev = &pdev->dev;
-	dev_info(dev, "Round1 test start!\n");
-	return platform_driver_register(&sgobbb_driver);
-}
-
-//------------------------------------------------------------------------------
-static void __exit sgobbb_mod_exit(void)
-{
-	struct device *dev = &pdev->dev;
-	dev_info(dev, "Round1 test finish!\n");
-	platform_driver_unregister(&sgobbb_driver);
-}
-
-//------------------------------------------------------------------------------
-module_init(sgobbb_mod_init);
-module_exit(sgobbb_mod_exit);
+module_platform_driver(sgobbb_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR(DRIVER_AUTHOR);
