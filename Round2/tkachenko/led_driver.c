@@ -13,6 +13,7 @@
 #define DRIVER_DESC "A simple driver."
 
 #define pdev_info(pdev, ...) (dev_info(&(pdev)->dev, __VA_ARGS__))
+#define interval_ms(x) ((x) * HZ / 1000)
 
 struct gpio_led_data {
 	const char			*name;
@@ -39,9 +40,9 @@ static void trigger_led(unsigned long __data)
 	led->enabled = !led->enabled;
 	gpiod_set_value(led->gpiod, led->enabled ? LED_FULL : LED_OFF);
 	if (led->enabled && led->led_off_ms > 0)
-		mod_timer(&led->timer, jiffies + led->led_off_ms);
+		mod_timer(&led->timer, jiffies + interval_ms(led->led_off_ms));
 	else if (!led->enabled && led->led_on_ms > 0)
-		mod_timer(&led->timer, jiffies + led->led_on_ms);
+		mod_timer(&led->timer, jiffies + interval_ms(led->led_on_ms));
 
 	spin_unlock_bh(&led->lock);
 }
@@ -72,7 +73,7 @@ static ssize_t set_led_on_interval(struct kobject *kobj,
 		new_interval = 0;
 
 	if (led->led_on_ms == 0 && new_interval > 0 && !led->enabled)
-		mod_timer(&led->timer, jiffies + new_interval);
+		mod_timer(&led->timer, jiffies + interval_ms(new_interval));
 
 	led->led_on_ms = new_interval;
 
@@ -116,7 +117,7 @@ static ssize_t set_led_off_interval(
 		new_interval = 0;
 
 	if (led->led_off_ms == 0 && new_interval > 0 && led->enabled)
-		mod_timer(&led->timer, jiffies + new_interval);
+		mod_timer(&led->timer, jiffies + interval_ms(new_interval));
 
 	led->led_off_ms = new_interval;
 
@@ -192,7 +193,7 @@ static int init_led(struct platform_device *pdev, struct gpio_led_data *led)
 	spin_lock_init(&led->lock);
 	setup_timer(&led->timer, trigger_led, (unsigned long) led);
 	if (led->led_on_ms)
-		mod_timer(&led->timer, jiffies + led->led_on_ms);
+		mod_timer(&led->timer, jiffies + interval_ms(led->led_on_ms));
 cleanup:
 	return ret;
 }
