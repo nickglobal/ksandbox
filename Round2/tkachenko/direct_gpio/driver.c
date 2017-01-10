@@ -67,7 +67,7 @@ static int glbbb_probe(struct platform_device *pdev)
 	timer_data.gpio_led[2] = LED3_GPIO;
 	timer_data.gpio_led[3] = LED4_GPIO;
 	for (idx = 0; idx < LEDS_NUM; idx++)
-		gpio_set_value(timer_data.gpio_led[idx], 0);
+		gpio_direction_input(timer_data.gpio_led[idx], 0);
 	timer_data.current_idx = 0;
 	timer_data.switchOn = true;
 	setup_timer(&timer_data.timer, blink, (unsigned long) &timer_data);
