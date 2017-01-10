@@ -19,10 +19,6 @@
 	};
 
 	leds {
-		pinctrl-names = "default", "sleep";
-		pinctrl-0 = <&user_leds_default>;
-		pinctrl-1 = <&user_leds_sleep>;
-
 		compatible = "gpio-leds-tkachenko";
 
 		led@2 {
