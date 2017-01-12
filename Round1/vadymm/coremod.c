@@ -26,6 +26,7 @@ static int vadymm_probe(struct platform_device *pdev)
 	if (!of_node)
 		return -EFAULT;
 
+	// The out_string pointer is modified only if a valid string can be decoded
 	of_property_read_string(of_node, "string-property", &str);
 
 	if (str)
