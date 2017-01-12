@@ -22,37 +22,29 @@ static int xkhavik_probe(struct platform_device *pdev)
 	struct device      *dev         = &pdev->dev;
 	struct device_node *pnode        = dev->of_node;
 
-	if ( dev == NULL)
-	{
-		printk(KERN_ERR "There is not such device");
+	if (dev == NULL)
 		return -ENODEV;
-	}
 
-	if (pnode == NULL)
-	{
+	if (pnode == NULL) {
 		dev_err(dev, "There is not such device node");
 		return -EINVAL;
 	}
 
 	dev_info(dev, "started prob module");
 
-	if(of_property_read_string(pnode,"string-property", &str_property) == 0)
-	{
+	if (of_property_read_string(pnode, "string-property",
+					&str_property) == 0) {
 		dev_info(dev, "string-property: %s\n", str_property);
-	}
-	else
-	{
+	} else {
 		dev_err(dev, "Error of reading string-property");
 		return -EINVAL;
 	}
 	return 0;
 }
 
-
 static int xkhavik_remove(struct platform_device *pdev)
 {
-	struct device *dev = &pdev->dev;
-	dev_info(dev, "Remove module");
+	dev_info(&pdev->dev, "Remove module");
 	return 0;
 }
 
