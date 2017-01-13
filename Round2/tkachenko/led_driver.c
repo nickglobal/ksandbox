@@ -230,8 +230,6 @@ parse_led_params(struct fwnode_handle *handle, struct gpio_led_data *led)
 		ret = of_property_read_u32(np, LED_OFF_STR, &led->led_off_ms);
 
 cleanup:
-	if (ret)
-		fwnode_handle_put(handle);
 	return ret;
 }
 
@@ -313,8 +311,10 @@ static int gpio_leds_probe(struct platform_device *pdev)
 		}
 
 		ret = parse_led_params(child, &priv->leds[priv->num_leds]);
-		if (ret)
+		if (ret) {
+			fwnode_handle_put(child);
 			goto cleanup;
+		}
 
 		ret = init_led(pdev, &priv->leds[priv->num_leds]);
 		if (ret)
