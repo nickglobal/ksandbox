@@ -99,7 +99,7 @@ static ssize_t led_store_on(struct class *class,
 	spin_lock_bh(&my_led->lock);
 	if (count) {
 		if (kstrtoint (buf, 10, &my_led->on))
-			return -EINVAL;
+			pr_err("pkbbb: fail read On param.\n");
 	} else
 		my_led->on = 0;
 
@@ -129,7 +129,7 @@ static ssize_t led_store_off(struct class *class,
 	spin_lock_bh(&my_led->lock);
 	if (count) {
 		if (kstrtoint (buf, 10, &my_led->off))
-			return -EINVAL;
+			pr_err("pkbbb: fail read Off param.\n");
 	} else
 		my_led->off = 0;
 
