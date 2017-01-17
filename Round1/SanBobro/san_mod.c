@@ -16,10 +16,18 @@ static int san_remove(struct platform_device *);
 static int san_probe(struct platform_device *pdev)
 {
 	const char *name_prop = NULL;
+	int ret;
+
 	struct device_node *pDevNode = pdev->dev.of_node;
 	
+	if (unlikely(!pDevNode))
+	{
+		printk(KERN_ERR "Error: pDevNode is NULL\n");
+		return -EINVAL;
+	}
 
-	if ( pDevNode  &&  !of_property_read_string(pDevNode, "myName_property", &name_prop) ) 
+	ret = of_property_read_string(pDevNode, "myName_property", &name_prop);
+	if (likely(!ret))
 	{
 		printk(KERN_DEBUG "myName_property is: %s\n", name_prop);
 		// For some testing:
