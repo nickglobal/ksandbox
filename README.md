@@ -12,3 +12,10 @@ in current software stack this LEDS controled by deriver placed here http://lxr.
 - add to driver ability to define GPIO poperty configuretion such gpios = <arg1 arg2 arg3>; etc..
 - add new property in DTS for configure blinking timings in milliseconds, it shuld  support two paramiters one for turn on and second for turn off.
 - led timing should be also configured via sysfs.
+
+#Round 3: communication interfaces, 
+
+##Task in short.
+- build reference driver.
+- define driver in DT file check driver. 
+- extend current driver for control via sysFS
