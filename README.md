@@ -18,4 +18,6 @@ in current software stack this LEDS controled by deriver placed here http://lxr.
 ##Task in short.
 - build reference driver.
 - define driver in DT file check driver. 
-- extend current driver for control via sysFS
+- extend driver for control for implement timer functionlity. 
+-- stimer for define timer value in seconds.
+-- srun for start timer down counting.
