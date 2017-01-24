@@ -19,5 +19,5 @@ in current software stack this LEDS controled by deriver placed here http://lxr.
 - build reference driver.
 - define driver in DT file check driver. 
 - extend driver for control for implement timer functionlity. 
--- stimer for define timer value in seconds.
--- srun for start timer down counting.
+- {stimer} for define timer value in seconds.
+- {srun} for start timer down counting.
