@@ -16,8 +16,13 @@ in current software stack this LEDS controled by deriver placed here http://lxr.
 #Round 3: communication interfaces, 
 
 ##Task in short.
+were in class:
 - build reference driver.
 - define driver in DT file check driver. 
-- extend driver for control for implement timer functionlity. 
-- {stimer} for define timer value in seconds.
-- {srun} for start timer down counting.
+
+homework
+- extend driver to add timer functionlity,
+- after driver load, display showing initial value and then start counting with period 1s. 
+- for schedule update dispaly action shuld be used timers or delayed workqueue 
+-- optional: use sysfs for initializing timeout value and for start timer counting
+
