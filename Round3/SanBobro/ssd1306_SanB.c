@@ -446,15 +446,21 @@ ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
     ssd1306_Puts(ssd1306, "HELLO GLOBALLOGIC", &TM_Font_7x10, SSD1306_COLOR_WHITE);
     ssd1306_UpdateScreen(ssd1306);
 
-    dev_err(&drv_client->dev, "ssd1306 driver successfully loaded\n");
+    dev_set_drvdata(&drv_client->dev, ssd1306);
+    dev_err(&drv_client->dev, "ssd1306 driver successfully loaded\n\n");
 
     return 0;
 }
 
 static int
-ssd1306_remove(struct i2c_client *client)
+ssd1306_remove(struct i2c_client *drv_client)
 {
-        return 0;
+	struct ssd1306_data *ssd1306;
+
+	ssd1306 = dev_get_drvdata(&drv_client->dev);
+	ssd1306_OFF(ssd1306);
+	dev_err(&drv_client->dev, "ssd1306 driver successfully unloaded\n");
+    return 0;
 }
 
 
@@ -477,11 +483,12 @@ static int __init ssd1306_init ( void )
     * An i2c_driver is used with one or more i2c_client (device) nodes to access
     * i2c slave chips, on a bus instance associated with some i2c_adapter.
     */
-    printk(KERN_ERR "ssd1306 mod init\n");
+    printk(KERN_ERR "********************************\n");
+    printk(KERN_ERR "%s(): ssd1306 mod init\n", __func__);
     ret = i2c_add_driver ( &ssd1306_driver);
     if(ret) 
     {
-        printk(KERN_ERR "failed to add new i2c driver");
+        printk(KERN_ERR "%s(): failed to add new i2c driver\n", __func__);
         return ret;
     }
 
@@ -492,7 +499,7 @@ static int __init ssd1306_init ( void )
 static void __exit ssd1306_exit(void)
 {
     i2c_del_driver(&ssd1306_driver);
-    printk(KERN_ERR "ssd1306: cleanup\n");  
+    printk(KERN_ERR "%s(): ssd1306: cleanup\n\n", __func__);
 }
 
 /* -------------- kernel thread description -------------- */
