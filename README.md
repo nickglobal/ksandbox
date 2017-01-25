@@ -24,5 +24,5 @@ homework
 - extend driver to add timer functionlity,
 - after driver load, display showing initial value and then start counting with period 1s. 
 - for schedule update dispaly action shuld be used timers or delayed workqueue 
--- optional: use sysfs for initializing timeout value and for start timer counting
+- **optional:** use sysfs for initializing timeout value and for start timer counting
 
