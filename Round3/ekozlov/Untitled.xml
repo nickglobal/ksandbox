@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cdtprojectproperties>
+<section name="org.eclipse.cdt.internal.ui.wizards.settingswizards.IncludePaths">
+<language name="C Source File">
+<includepath>/home/me/KernelWorkshop/ops/bbb/module_dbg/KERNEL/include</includepath>
+<includepath>/home/me/KernelWorkshop/ops/bbb/module_dbg/KERNEL/arch/arm/include</includepath>
+<includepath>/home/me/KernelWorkshop/ops/bbb/module_dbg/ksandbox/Round2/ekozlov</includepath>
+<includepath>/usr/include</includepath>
+<includepath>/home/me/KernelWorkshop/ops/bbb/module_dbg/KERNEL/include/generated</includepath>
+
+</language>
+<language name="C++ Source File">
+<includepath>/home/me/KernelWorkshop/ops/bbb/module_dbg/KERNEL/include</includepath>
+<includepath>/home/me/KernelWorkshop/ops/bbb/module_dbg/KERNEL/arch/arm/include</includepath>
+<includepath>/usr/include</includepath>
+<includepath>/home/me/KernelWorkshop/ops/bbb/module_dbg/KERNEL/include/generated</includepath>
+
+</language>
+<language name="Object File">
+
+</language>
+<language name="Assembly Source File">
+<includepath>/home/me/KernelWorkshop/ops/bbb/module_dbg/KERNEL/include</includepath>
+<includepath>/home/me/KernelWorkshop/ops/bbb/module_dbg/KERNEL/arch/arm/include</includepath>
+<includepath>/home/me/KernelWorkshop/ops/bbb/module_dbg/ksandbox/Round2/ekozlov</includepath>
+<includepath>/usr/include</includepath>
+<includepath>/home/me/KernelWorkshop/ops/bbb/module_dbg/KERNEL/include/generated</includepath>
+
+</language>
+</section>
+<section name="org.eclipse.cdt.internal.ui.wizards.settingswizards.Macros">
+<language name="C Source File">
+
+</language>
+<language name="C++ Source File">
+
+</language>
+<language name="Object File">
+
+</language>
+<language name="Assembly Source File">
+
+</language>
+</section>
+</cdtprojectproperties>
