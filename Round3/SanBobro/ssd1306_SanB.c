@@ -24,6 +24,9 @@
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
 
+static int TURN_OFF_DISPLAY = 1;
+module_param_named( O, TURN_OFF_DISPLAY, int, 0);
+
 
 #define DEVICE_NAME "ssd1306"
 #define CLASS_NAME  "oled_display" 
@@ -34,6 +37,7 @@
 
 #define WRITECOMMAND  0x00 // 
 #define WRITEDATA     0x40 // 
+
 
 
 /* register def
@@ -236,25 +240,37 @@ char ssd1306_Puts(struct ssd1306_data *drv_data, char* str, TM_FontDef_t* Font, 
 int ssd1306_UpdateScreen(struct ssd1306_data *drv_data);
 int ssd1306_ON(struct ssd1306_data *drv_data);
 int ssd1306_OFF(struct ssd1306_data *drv_data);
+int ssd1306_clean(struct ssd1306_data *drv_data, int clean_ssd1306_Buffer);
 
 /* Init sequence taken from the Adafruit SSD1306 Arduino library */
 static void ssd1306_init_lcd(struct i2c_client *drv_client) {
 
     char m;
     char i;
+    u8 d;
 
     printk(KERN_ERR "ssd1306: Device init \n");
     	/* Init LCD */
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xAE); //display off
+    if (TURN_OFF_DISPLAY)
+    	i2c_smbus_write_byte_data(drv_client, 0x00, 0xAE); //display off
+
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x20); //Set Memory Addressing Mode
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x10); //00,Horizontal Addressing Mode;01,Vertical Addressing Mode;10,Page Addressing Mode (RESET);11,Invalid
+    // San Bobro: the bug is detected in the next line.
+    // Modes are described by "00b", "01b", "10b" in binary format, not hex!
+    // So to set "Page Addressing Mode" we should sent 0x02, not 0x10.
+    // 0x10 - enables "Vertical Addressing Mode". (See advanced datasheet).
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x02);	// 0x00 - Horizontal Addressing Mode;
+    													// 0x01 - Vertical Addressing Mode;
+    													// 0x02 - Page Addressing Mode (RESET);
+    													// 0x03 - Invalid.
+
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0); //Set Page Start Address for Page Addressing Mode,0-7
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xC8); //Set COM Output Scan Direction
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x00); //---set low column address
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x10); //---set high column address
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x40); //--set start line address
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x81); //--set contrast control register
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x01);
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xFE);
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xA1); //--set segment re-map 0 to 127
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xA6); //--set normal display
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xA8); //--set multiplex ratio(1 to 64)
@@ -276,15 +292,23 @@ static void ssd1306_init_lcd(struct i2c_client *drv_client) {
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x14); //
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xAF); //--turn on SSD1306 panel
 
+    d = jiffies % 0xff;
+    if (!d)
+    	d = 0x18;
+
+//    printk(KERN_ERR "%s: ms before data writing to LCD = %u\n", __func__, jiffies_to_msecs(jiffies));
     for (m = 0; m < 8; m++) {
         i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0 + m);
         i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
         i2c_smbus_write_byte_data(drv_client, 0x00, 0x10);
         /* Write multi data */
         for (i = 0; i < SSD1306_WIDTH; i++) {
-            i2c_smbus_write_byte_data(drv_client, 0x40, 0xaa);
+            i2c_smbus_write_byte_data(drv_client, 0x40, d);
         }
     }
+//    printk(KERN_ERR "%s: ms after data writing to LCD =  %u\n", __func__, jiffies_to_msecs(jiffies));
+//    msleep(400000);
+//    printk(KERN_ERR "%s: ms after sleep = %u\n", __func__, jiffies_to_msecs(jiffies));
 }
 /**/
 int ssd1306_UpdateScreen(struct ssd1306_data *drv_data) {
@@ -297,10 +321,10 @@ int ssd1306_UpdateScreen(struct ssd1306_data *drv_data) {
 
     for (m = 0; m < 8; m++) {
         i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0 + m);
-        i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
-        i2c_smbus_write_byte_data(drv_client, 0x00, 0x10);
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0x0F);
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0x12); //0x2F > 15, so we will jump to the start of line/next line.
         /* Write multi data */
-        for (i = 0; i < SSD1306_WIDTH; i++) {
+        for (i = 15; i < SSD1306_WIDTH; i++) {
             i2c_smbus_write_byte_data(drv_client, 0x40, ssd1306_Buffer[SSD1306_WIDTH*m +i]);
         }   
     }
@@ -406,11 +430,35 @@ int ssd1306_OFF(struct ssd1306_data *drv_data) {
     return 0;
 }
 
+int ssd1306_clean(struct ssd1306_data *drv_data, int clean_ssd1306_Buffer) {
+    struct i2c_client *drv_client;
+    char m;
+    char i;
+
+    drv_client = drv_data->client;
+
+    for (m = 0; m < 8; m++) {
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0 + m);
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0x10);
+        /* Write multi data */
+        for (i = 0; i < SSD1306_WIDTH; i++) {
+            i2c_smbus_write_byte_data(drv_client, 0x40, 0x00);
+        }
+    }
+
+    if (clean_ssd1306_Buffer)
+    	memset(ssd1306_Buffer, 0, sizeof(ssd1306_Buffer));
+
+    return 0;
+}
+
 static int
 ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
 {
     struct ssd1306_data *ssd1306;
     struct i2c_adapter *adapter;
+//    int i;
 
     printk(KERN_ERR "init I2C driver\n");
 
@@ -441,10 +489,53 @@ ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
     }
 
     //cra[]
+    ssd1306_clean(ssd1306, 1);
     ssd1306_init_lcd( drv_client);
+    ssd1306_GotoXY(ssd1306, 8, 4);
+    ssd1306_Puts(ssd1306, "HELLO GLOBALLOGIC", &TM_Font_7x10, SSD1306_COLOR_WHITE);
+    ssd1306_UpdateScreen(ssd1306);
+//    msleep(2000);
+//    ssd1306_clean(ssd1306, 0);
+//    msleep(3000);
     ssd1306_GotoXY(ssd1306, 8, 25);
     ssd1306_Puts(ssd1306, "HELLO GLOBALLOGIC", &TM_Font_7x10, SSD1306_COLOR_WHITE);
     ssd1306_UpdateScreen(ssd1306);
+
+    ssd1306_GotoXY(ssd1306, 8, 50);
+    ssd1306_Puts(ssd1306, "HELLO GLOBALLOGIC", &TM_Font_7x10, SSD1306_COLOR_WHITE);
+    ssd1306_UpdateScreen(ssd1306);
+
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x20); //Set Memory Addressing Mode
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x01); //00,Horizontal Addressing Mode;01,Vertical Addressing Mode;10,Page Addressing Mode (RESET);11,Invalid
+
+
+//    for (i=0; i<100; i++)
+//    {
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x2E); //Stop scrolling
+//
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x29);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x11);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x07);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x01);
+//
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x2F); //Start scrolling
+//    msleep(3);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x2E); //Stop scrolling
+//
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x2A);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x11);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x07);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x01);
+//
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x2F); //Start scrolling
+//    msleep(3);
+//    }
+//    msleep(3);
+//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x2E); //Stop scrolling
 
     dev_set_drvdata(&drv_client->dev, ssd1306);
     dev_err(&drv_client->dev, "ssd1306 driver successfully loaded\n\n");
@@ -458,7 +549,8 @@ ssd1306_remove(struct i2c_client *drv_client)
 	struct ssd1306_data *ssd1306;
 
 	ssd1306 = dev_get_drvdata(&drv_client->dev);
-	ssd1306_OFF(ssd1306);
+	if (TURN_OFF_DISPLAY)
+		ssd1306_OFF(ssd1306);
 	dev_err(&drv_client->dev, "ssd1306 driver successfully unloaded\n");
     return 0;
 }
