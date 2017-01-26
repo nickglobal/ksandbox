@@ -247,7 +247,15 @@ static void ssd1306_init_lcd(struct i2c_client *drv_client) {
     	/* Init LCD */
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xAE); //display off
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x20); //Set Memory Addressing Mode
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x10); //00,Horizontal Addressing Mode;01,Vertical Addressing Mode;10,Page Addressing Mode (RESET);11,Invalid
+    // San Bobro: the bug is detected in the next line.
+    // Modes are described by "00b", "01b", "10b" in binary format, not hex!
+    // So to set "Page Addressing Mode" we should sent 0x02, not 0x10.
+    // 0x10 - enables "Vertical Addressing Mode". (See advanced datasheet).
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x02);	// 0x00 - Horizontal Addressing Mode;
+    													// 0x01 - Vertical Addressing Mode;
+    													// 0x02 - Page Addressing Mode (RESET);
+    													// 0x03 - Invalid.
+
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0); //Set Page Start Address for Page Addressing Mode,0-7
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xC8); //Set COM Output Scan Direction
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x00); //---set low column address
