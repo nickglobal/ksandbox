@@ -104,7 +104,6 @@ struct ssd1306_work_struct {
     unsigned short initial_value;
 };
 
-static struct ssd1306_data *g_ssd1306;
 
 /* Forward declaration */
 static ssize_t ssd1306_attr_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count);

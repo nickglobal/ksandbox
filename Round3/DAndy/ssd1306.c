@@ -29,18 +29,23 @@
 #include <linux/init.h>
 #include <linux/i2c.h>
 #include <linux/err.h>
-#include <linux/fixp-arith.h>
+
+//#include <linux/kthread.h>
+#include <linux/workqueue.h>
+#include <linux/timer.h>
+#include <linux/delay.h>
+#include <linux/slab.h>
 
 
-#define DEVICE_NAME "lcd_ssd1306"
-#define CLASS_NAME  "oled_display" 
-#define BUS_NAME    "i2c_1"
+#define DEVICE_NAME	"lcd_ssd1306"
+#define CLASS_NAME	"oled_display" 
+#define BUS_NAME	"i2c_1"
 
-#define SSD1306_WIDTH 	128
-#define SSD1306_HEIGHT 	64
+#define SSD1306_WIDTH	128
+#define SSD1306_HEIGHT	64
 
-#define WRITECOMMAND  	0x00 // 
-#define WRITEDATA 		0x40 // 
+#define WRITECOMMAND	0x00 // 
+#define WRITEDATA		0x40 // 
 
 
 static struct device *dev;
@@ -61,10 +66,19 @@ struct ssd1306_data {
 	struct class *sys_class;
     int status;
     struct dpoz poz;
+
+	struct workqueue_struct *wq;
+	int value;
 };
 
 
 static struct ssd1306_data *lcd;
+
+
+static void lcd_work_handler(struct work_struct *w);
+static DECLARE_DELAYED_WORK(lcd_work, lcd_work_handler);
+
+static unsigned long onesec;
 
 /* -------------- hardware description -------------- */
 /* device models */
@@ -480,6 +494,55 @@ void ssd1306_clear(void){
 }
 
 
+
+
+
+
+static int lcd_work_init(void)
+{
+	onesec = msecs_to_jiffies(1000);
+
+	if (!lcd->wq)
+		lcd->wq = create_singlethread_workqueue(DEVICE_NAME);
+
+	if (lcd->wq)
+		queue_delayed_work(lcd->wq, &lcd_work, onesec);
+
+	return 0;
+}
+
+
+
+static void lcd_work_handler(struct work_struct *w)
+{
+
+	char str[20];
+
+	if (lcd->value > 0) {
+		sprintf(str, "value = %5d  ", lcd->value);
+
+		ssd1306_GotoXY(lcd, 8, 40);
+		ssd1306_Puts(lcd, str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
+		ssd1306_UpdateScreen(lcd);
+
+		if (lcd->wq)
+			queue_delayed_work(lcd->wq, &lcd_work, onesec);
+
+		//sprintf(str, "value = %5d  \n", lcd->value);
+		//dev_info(dev, str);
+
+		lcd->value--;
+	}
+	else{
+		ssd1306_GotoXY(lcd, 8, 40);
+		ssd1306_Puts(lcd, "countdown done", &TM_Font_7x10, SSD1306_COLOR_WHITE);
+		ssd1306_UpdateScreen(lcd);
+	}
+}
+
+
+
+
 static ssize_t sys_lcd_clear(struct class *class,
 	struct class_attribute *attr, char *buf)
 {
@@ -496,15 +559,12 @@ static ssize_t sys_lcd_clear(struct class *class,
 }
 
 
-static int sec = 5;
 static ssize_t sys_lcd_paint(struct class *class,
 	struct class_attribute *attr, char *buf)
 {
 	ssize_t i = 0;
-	_Point center = {64, 32};
-	int R = 30;
-	int angle;
-	int xx, yy;
+	//_Point center = {64, 32};
+
 	i += sprintf(buf, "sys_lcd_paint\n");
 
 
@@ -522,9 +582,36 @@ static ssize_t sys_lcd_paint(struct class *class,
 
 
 
+static ssize_t sys_lcd_interval(struct class *class,
+	struct class_attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	int value;
+	ret = sscanf(buf, "%d", &value);
+	if(ret!=1)
+		return ret;
+	
+	if(!value)
+		return ret;
+
+	if (lcd->wq){
+		flush_workqueue(lcd->wq);
+		lcd->value = value;
+		queue_delayed_work(lcd->wq, &lcd_work, onesec);
+	}
+	else{
+		lcd->wq = 0;
+		lcd->value = value;
+		lcd_work_init();
+	}
+
+	dev_info(dev, "lcd->value = %d\n", lcd->value);
+	return count;
+}
 
 CLASS_ATTR(clear, 0664, &sys_lcd_clear, NULL);
 CLASS_ATTR(paint, 0664, &sys_lcd_paint, NULL);
+CLASS_ATTR(interval, 0664, NULL, &sys_lcd_interval);
 
 
 static void make_sysfs_entry(struct i2c_client *drv_client)
@@ -549,6 +636,7 @@ static void make_sysfs_entry(struct i2c_client *drv_client)
 		else{
 			res = class_create_file(sys_class, &class_attr_clear);
 			res = class_create_file(sys_class, &class_attr_paint);
+			res = class_create_file(sys_class, &class_attr_interval);
 
 
 			lcd->sys_class = sys_class;
@@ -558,10 +646,11 @@ static void make_sysfs_entry(struct i2c_client *drv_client)
 }
 
 
+
+
 static int ssd1306_probe(struct i2c_client *drv_client,
 			const struct i2c_device_id *id)
 {
-    //struct ssd1306_data *ssd1306;
 	struct i2c_adapter *adapter;
 
 	dev = &drv_client->dev;
@@ -576,6 +665,7 @@ static int ssd1306_probe(struct i2c_client *drv_client,
 
     lcd->client = drv_client;
     lcd->status = 0xABCD;
+    lcd->value 	= 10;
 
     i2c_set_clientdata(drv_client, lcd);
 
@@ -596,8 +686,9 @@ static int ssd1306_probe(struct i2c_client *drv_client,
 
 
 	make_sysfs_entry(drv_client);
+	
+	lcd_work_init();
 
-    //cra[]
     ssd1306_init_lcd(drv_client);
     ssd1306_GotoXY(lcd, 8, 25);
     ssd1306_Puts(lcd, "HELLO DANDY", &TM_Font_7x10, SSD1306_COLOR_WHITE);
@@ -618,7 +709,11 @@ static int ssd1306_remove(struct i2c_client *client)
 
 	class_remove_file(sys_class, &class_attr_clear);
 	class_remove_file(sys_class, &class_attr_paint);
+	class_remove_file(sys_class, &class_attr_interval);
 	class_destroy(sys_class);
+
+	if (lcd->wq)
+		destroy_workqueue(lcd->wq);
 
 	dev_info(dev, "Goodbye, world!\n");
 	return 0;
