@@ -104,6 +104,15 @@ struct ssd1306_work_struct {
     unsigned short initial_value;
 };
 
+static struct ssd1306_data *g_ssd1306;
+
+/* Forward declaration */
+static ssize_t ssd1306_attr_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count);
+
+static struct class *class_ssd1306 = 0;
+CLASS_ATTR(interval, 0664, NULL, &ssd1306_attr_store);
+
+
 
 /**
 * @brief SSD1306 color enumeration
@@ -424,12 +433,12 @@ static void ssd1306_wq_function(struct work_struct *work)
     char str[20];
     int value;
 
-    ssd1306 = ((struct ssd1306_work_struct *)work)->ssd1306;
+    ssd1306 = g_ssd1306;
     initial_value = ((struct ssd1306_work_struct *)work)->initial_value;
 
     value = initial_value;
     while (value >= 0) {
-        sprintf(str, "value = %5d", value);
+        sprintf(str, "value = %5d  ", value);
 
         ssd1306_GotoXY(ssd1306, 8, 40);
         ssd1306_Puts(ssd1306, str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
@@ -448,26 +457,37 @@ static void ssd1306_wq_function(struct work_struct *work)
     printk(KERN_ERR "ssd1306_wq_function done!\n");
 }
 
-static int ssd1306_wq_create(struct ssd1306_data *ssd1306data, unsigned short initial_value)
+static void ssd1306_wq_wait(void)
+{
+    if (ssd1306_wq)
+        flush_workqueue(ssd1306_wq);    
+}
+
+static int ssd1306_wq_addwork(unsigned short initial_value)
 {
     bool ret;
     struct ssd1306_work_struct *work;
-
-    ssd1306_wq = create_workqueue("ssd1306_wq");
-    if (!ssd1306_wq)
-        return -EBADRQC;
 
     work = (struct ssd1306_work_struct *)kmalloc(sizeof(struct ssd1306_work_struct), GFP_KERNEL);
     if (!work)
         return -ENOMEM;
 
     INIT_WORK((struct work_struct *)work, ssd1306_wq_function);
-    work->ssd1306 = ssd1306data;
     work->initial_value = initial_value;
 
     ret = queue_work(ssd1306_wq, (struct work_struct *)work);
     if (!ret)
         return -EPERM;
+
+    return 0;
+}
+
+
+static int ssd1306_wq_create(struct ssd1306_data *ssd1306data, unsigned short initial_value)
+{
+    ssd1306_wq = create_workqueue("ssd1306_wq");
+    if (!ssd1306_wq)
+        return -EBADRQC;
 
     return 0;
 }
@@ -478,6 +498,46 @@ static int ssd1306_wq_cleanup(void)
         flush_workqueue(ssd1306_wq);
         destroy_workqueue(ssd1306_wq);
         ssd1306_wq = 0;
+    }
+    return 0;
+}
+
+
+static ssize_t ssd1306_attr_store(struct class *class, struct class_attribute *attr, const char *buf, size_t count)
+{
+    int ret;
+    int interval;
+
+    ret = sscanf(buf, "%d", &interval);
+    if (ret != 1)
+        return 0;
+
+    ssd1306_wq_wait();
+    ssd1306_wq_addwork(interval);
+
+    return count;
+}
+
+static int ssd1306_class_create(void)
+{
+    int ret;
+
+    class_ssd1306 = class_create(THIS_MODULE, CLASS_NAME);
+    if (IS_ERR(class_ssd1306))
+        return PTR_ERR(class_ssd1306);
+   
+    ret = class_create_file(class_ssd1306, &class_attr_interval);
+    if (IS_ERR_VALUE(ret))
+        return ret;
+
+    return 0;
+}
+
+static int ssd1306_class_cleanup(void)
+{
+    if (class_ssd1306) {
+        class_remove_file(class_ssd1306, &class_attr_interval);
+        class_destroy(class_ssd1306);
     }
     return 0;
 }
@@ -497,6 +557,8 @@ ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
                         GFP_KERNEL);
     if (!ssd1306)
         return -ENOMEM;
+
+    g_ssd1306 = ssd1306;
 
     ssd1306->client = drv_client;
     ssd1306->status = 0xABCD;
@@ -530,13 +592,17 @@ ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
     if (ret < 0)
         dev_err(&drv_client->dev, "workqueue initialization failed!\n");
 
+    ssd1306_wq_addwork(INITIAL_VALUE);
+
+    ssd1306_class_create();
+
     return 0;
 }
 
 static int
 ssd1306_remove(struct i2c_client *client)
 {
-    /*return 0;*/
+    ssd1306_class_cleanup();
     return ssd1306_wq_cleanup();
 }
 
