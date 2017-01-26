@@ -250,7 +250,8 @@ static void ssd1306_init_lcd(struct i2c_client *drv_client) {
     // San Bobro: the bug is detected in the next line.
     // Modes are described by "00b", "01b", "10b" in binary format, not hex!
     // So to set "Page Addressing Mode" we should sent 0x02, not 0x10.
-    // 0x10 - enables "Vertical Addressing Mode". (See advanced datasheet).
+    // 0x10 - enables "Vertical Addressing Mode" as and 0x00
+    // because the lower 2 bits are taken into account only. (See advanced datasheet).
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x02);	// 0x00 - Horizontal Addressing Mode;
     													// 0x01 - Vertical Addressing Mode;
     													// 0x02 - Page Addressing Mode (RESET);
