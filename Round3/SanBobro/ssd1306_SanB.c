@@ -27,6 +27,12 @@
 static int TURN_OFF_DISPLAY = 1;
 module_param_named( O, TURN_OFF_DISPLAY, int, 0);
 
+static int offset_number = 600;
+module_param_named( on, offset_number, int, 0);
+
+static int mdelay = 10;
+module_param_named( md, mdelay, int, 0);
+
 
 #define DEVICE_NAME "ssd1306"
 #define CLASS_NAME  "oled_display" 
@@ -38,7 +44,8 @@ module_param_named( O, TURN_OFF_DISPLAY, int, 0);
 #define WRITECOMMAND  0x00 // 
 #define WRITEDATA     0x40 // 
 
-
+#define SYM_WIDTH	18 	//column
+#define SYM_HEIGHT	3	//bytes = 3*8 rows
 
 /* register def
 #define SSD1306_LCDWIDTH      128
@@ -232,6 +239,33 @@ TM_FontDef_t TM_Font_7x10 = {
 };
 
 
+#define ARRAY_COL 5
+#define ARRAY_ROW SYM_WIDTH
+
+u64 symArray[ARRAY_ROW][ARRAY_COL] = {
+	//		1		0			3		2			5		4			7		6			9		8
+	{ 0x00000000000ffff0, 0x000c000700f00070, 0x000c000000000000, 0x00000000000ff800, 0x000007f0000fe000 },
+	{ 0x00000000001ffff8, 0x001c000700fc0078, 0x001c0fff0001c000, 0x00000000001ffe00, 0x00000ff8001ff000 },
+	{ 0x00000000003ffffc, 0x003c000700fc007c, 0x003c0fff0001f000, 0x00000007003fff80, 0x00001ffc003ff878 },
+	{ 0x000000000078001e, 0x0078000700fe001e, 0x00780fff0001f800, 0x0000000700783fc0, 0x00003c1e00783cfc },
+	{ 0x00e0007000f0000f, 0x00f0000700ee000f, 0x00f00e070001fe00, 0x00c0000700f01fe0, 0x0000780f00f01dfe },
+	{ 0x00e0007800e00007, 0x00e0000700e70007, 0x00e00e070001ff00, 0x00f0000700e00ff0, 0x0000700700e00fcf },
+	{ 0x00e0003c00e00007, 0x00e0000700e70007, 0x00e00e070001cfc0, 0x00fc000700e00e78, 0x00c0700700e00f87 },
+	{ 0x00e0001e00e00007, 0x00e00e0700e38007, 0x00e00e070001c7e0, 0x00ff000700e00e3c, 0x00e0700700e00f07 },
+	{ 0x00ffffff00e00007, 0x00e00f0700e38007, 0x00e00e070001c1f8, 0x003fc00700e00e1e, 0x00f0700700e00f07 },
+	{ 0x00ffffff00e00007, 0x00e00f8700e1c007, 0x00e00e070001c0fe, 0x000ff00700e00e0f, 0x0078700700e00f07 },
+	{ 0x00ffffff00e00007, 0x00e00fc700e1c007, 0x00e00e070001c03f, 0x0003fc0700e00e07, 0x003c700700e00f07 },
+	{ 0x00ffffff00e00007, 0x00e00fe700e0e007, 0x00e00e070001c01f, 0x0000ff0700e00e03, 0x001e700700e00f87 },
+	{ 0x00e0000000e00007, 0x00e00ef700e0e007, 0x00e00e0700ffffff, 0x00003fc700e00e00, 0x000ff00700e00fcf },
+	{ 0x00e0000000f0000f, 0x00f01e7f00e0700f, 0x00f01e0700ffffff, 0x00000ff700f01e00, 0x0007f80f00f01dfe },
+	{ 0x00e000000078001e, 0x00783c3f00e0781e, 0x00783c0700ffffff, 0x000003ff00783c00, 0x0003fc1e00783cfc },
+	{ 0x00e00000003ffffc, 0x003ff81f00e03ffc, 0x003ff80700ffffff, 0x000000ff003ff800, 0x0001fffc003ff878 },
+	{ 0x00000000001ffff8, 0x001ff00f00e01ff8, 0x001ff0070001c000, 0x0000003f001ff000, 0x00007ff8001ff000 },
+	{ 0x00000000000ffff0, 0x000fe00700e00ff0, 0x000fe0000001c000, 0x0000000f000fe000, 0x00001ff0000fe000 },
+};
+
+
+
 //
 int ssd1306_DrawPixel(struct ssd1306_data *drv_data, u16 x, u16 y, ssd1306_COLOR_t color);
 int ssd1306_GotoXY(struct ssd1306_data *drv_data, u16 x, u16 y);
@@ -258,7 +292,8 @@ static void ssd1306_init_lcd(struct i2c_client *drv_client) {
     // San Bobro: the bug is detected in the next line.
     // Modes are described by "00b", "01b", "10b" in binary format, not hex!
     // So to set "Page Addressing Mode" we should sent 0x02, not 0x10.
-    // 0x10 - enables "Vertical Addressing Mode". (See advanced datasheet).
+    // 0x10 - enables "Vertical Addressing Mode" as and 0x00
+    // because the lower 2 bits are taken into account only. (See advanced datasheet).
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x02);	// 0x00 - Horizontal Addressing Mode;
     													// 0x01 - Vertical Addressing Mode;
     													// 0x02 - Page Addressing Mode (RESET);
@@ -274,13 +309,13 @@ static void ssd1306_init_lcd(struct i2c_client *drv_client) {
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xA1); //--set segment re-map 0 to 127
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xA6); //--set normal display
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xA8); //--set multiplex ratio(1 to 64)
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x3F); //
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x3F); //ox3f
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xA4); //0xa4,Output follows RAM content;0xa5,Output ignores RAM content
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xD3); //-set display offset
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x00); //-not offset
 
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xD5); //--set display clock divide ratio/oscillator frequency
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xa0); //--set divide ratio
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xF0); //--set divide ratio //0xa0
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xD9); //--set pre-charge period
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x22); //
 
@@ -321,10 +356,10 @@ int ssd1306_UpdateScreen(struct ssd1306_data *drv_data) {
 
     for (m = 0; m < 8; m++) {
         i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0 + m);
-        i2c_smbus_write_byte_data(drv_client, 0x00, 0x0F);
-        i2c_smbus_write_byte_data(drv_client, 0x00, 0x12); //0x2F > 15, so we will jump to the start of line/next line.
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0x10);
         /* Write multi data */
-        for (i = 15; i < SSD1306_WIDTH; i++) {
+        for (i = 0; i < SSD1306_WIDTH; i++) {
             i2c_smbus_write_byte_data(drv_client, 0x40, ssd1306_Buffer[SSD1306_WIDTH*m +i]);
         }   
     }
@@ -458,7 +493,8 @@ ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
 {
     struct ssd1306_data *ssd1306;
     struct i2c_adapter *adapter;
-//    int i;
+    int i, j;
+    int k = 0;
 
     printk(KERN_ERR "init I2C driver\n");
 
@@ -491,23 +527,21 @@ ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
     //cra[]
     ssd1306_clean(ssd1306, 1);
     ssd1306_init_lcd( drv_client);
-    ssd1306_GotoXY(ssd1306, 8, 4);
+    ssd1306_GotoXY(ssd1306, 5, 4);
     ssd1306_Puts(ssd1306, "HELLO GLOBALLOGIC", &TM_Font_7x10, SSD1306_COLOR_WHITE);
     ssd1306_UpdateScreen(ssd1306);
 //    msleep(2000);
 //    ssd1306_clean(ssd1306, 0);
 //    msleep(3000);
-    ssd1306_GotoXY(ssd1306, 8, 25);
-    ssd1306_Puts(ssd1306, "HELLO GLOBALLOGIC", &TM_Font_7x10, SSD1306_COLOR_WHITE);
-    ssd1306_UpdateScreen(ssd1306);
+//    ssd1306_GotoXY(ssd1306, 5, 25);
+//    ssd1306_Puts(ssd1306, "HELLO GLOBALLOGIC", &TM_Font_7x10, SSD1306_COLOR_WHITE);
+//    ssd1306_UpdateScreen(ssd1306);
+//
+//    ssd1306_GotoXY(ssd1306, 5, 50);
+//    ssd1306_Puts(ssd1306, "HELLO GLOBALLOGIC", &TM_Font_7x10, SSD1306_COLOR_WHITE);
+//    ssd1306_UpdateScreen(ssd1306);
 
-    ssd1306_GotoXY(ssd1306, 8, 50);
-    ssd1306_Puts(ssd1306, "HELLO GLOBALLOGIC", &TM_Font_7x10, SSD1306_COLOR_WHITE);
-    ssd1306_UpdateScreen(ssd1306);
-
-//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x20); //Set Memory Addressing Mode
-//    i2c_smbus_write_byte_data(drv_client, 0x00, 0x01); //00,Horizontal Addressing Mode;01,Vertical Addressing Mode;10,Page Addressing Mode (RESET);11,Invalid
-
+//    msleep(100);
 
 //    for (i=0; i<100; i++)
 //    {
@@ -537,8 +571,115 @@ ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
 //    msleep(3);
 //    i2c_smbus_write_byte_data(drv_client, 0x00, 0x2E); //Stop scrolling
 
+//    msleep(1000);
+    ssd1306_clean(ssd1306, 1);
+
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x20); //Set Memory Addressing Mode
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x01);	// 0x00 - Horizontal Addressing Mode;
+    													// 0x01 - Vertical Addressing Mode;
+    													// 0x02 - Page Addressing Mode (RESET);
+    													// 0x03 - Invalid.
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x21); //Set Column Address 21h
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x0A);
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x7F-0x0A);
+
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x22); // Set Page Address 22h
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x07);
+
+    for (i = 0; i < 8*30; i++) {
+    	i2c_smbus_write_byte_data(drv_client, 0x40, 0x03);
+    }
+
+    u8 *pc;
+//    for (i=0; i<8; i++, pc++)
+//    {
+//    	printk(KERN_ERR "%.2x\n", *pc);
+//
+//    }
+
+	i2c_smbus_write_byte_data(drv_client, 0x00, 0x21); //Set Column Address 21h
+	i2c_smbus_write_byte_data(drv_client, 0x00, 0x0A+40);
+	i2c_smbus_write_byte_data(drv_client, 0x00, 0x0A+40+SYM_WIDTH-1);
+
+	i2c_smbus_write_byte_data(drv_client, 0x00, 0x22); // Set Page Address 22h
+	i2c_smbus_write_byte_data(drv_client, 0x00, 0x01);
+	i2c_smbus_write_byte_data(drv_client, 0x00, 0x07);
+
+
+
+    u64 mask = 0;
+    u64 mask0 = 0;
+    unsigned int ms;
+
+//	msleep(2000);
+	ms = jiffies_to_msecs(jiffies);
+    while (1)
+    {
+    	pc = (u8*)&(symArray[0][0]);
+    	for (i = 0; i < 8*SYM_WIDTH; i++, pc++) {
+    		if (i%8 == 7)
+    		{
+    			pc += 8*(ARRAY_COL-1);
+    			continue;
+    		}
+
+    		i2c_smbus_write_byte_data(drv_client, 0x40, *pc);
+//    		printk(KERN_ERR "%.2x\n", *pc);
+
+    	}
+
+#define OFFSET 1
+
+#if  (OFFSET==1)
+    	for (i = 0; i < ARRAY_ROW; i++)
+    	{
+    		mask0 = symArray[i][0] & 0x0000000000000001;
+    		for (j=ARRAY_COL-1; j >= 0; j--)
+    		{
+    			mask = symArray[i][j] & 0x0000000000000001;
+    			symArray[i][j] = symArray[i][j] >> 1;
+        		if (mask0)
+        			symArray[i][j] = symArray[i][j] | 0x8000000000000000;
+        		mask0 = mask;
+    		}
+    	}
+    	if (mdelay)
+    		msleep( mdelay );
+
+#elif (OFFSET==2)
+    	for (i = 0; i < ARRAY_ROW; i++)
+    	{
+    		mask0 = symArray[i][0] & 0x0000000000000003;
+    		for (j=ARRAY_COL-1; j >= 0; j--)
+    		{
+    			mask = symArray[i][j] & 0x0000000000000003;
+    			symArray[i][j] = symArray[i][j] >> 2;
+        		if (mask0)
+        			symArray[i][j] = symArray[i][j] | 0xC000000000000000;
+        		mask0 = mask;
+    		}
+    	}
+    	if (mdelay)
+    		msleep( mdelay );
+#endif
+
+    	k++;
+    	if (k>=offset_number) break;
+    	if (k%32==0)
+    		msleep(530);
+    }
+	ms = jiffies_to_msecs(jiffies) - ms;
+	dev_err(&drv_client->dev, "@@@@@ time for shift count %d, OFFSET %u and mdelay %d is %u. @@@@@\n",
+			offset_number, OFFSET, mdelay, ms);
+
+
     dev_set_drvdata(&drv_client->dev, ssd1306);
     dev_err(&drv_client->dev, "ssd1306 driver successfully loaded\n\n");
+
+
+//    dev_err(&drv_client->dev, "ssd1306 driver successfully loaded**********************\n\n");
+//    return -1;
 
     return 0;
 }
