@@ -1,0 +1,15 @@
+.cproject
+.project
+
+Module.symvers
+modules.order
+
+*.o
+*.cmd
+*.ko
+*.mod.c
+
+.tmp_versions/
+.settings/
+.nbproject/
+

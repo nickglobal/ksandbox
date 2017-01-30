@@ -1,7 +1,8 @@
 #!/bin/bash -e
 
-export CROSS_COMPILE=/home/me/KernelWorkshop/ops/bbb/module_dbg/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
+export CROSS_COMPILE=$HOME/KernelWorkshop/ops/bbb/module_dbg/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
 export ARCH=arm
+DTB_PATH=$HOME/KernelWorkshop/ops/bbb/module_dbg/KERNEL/arch/arm/boot/dts
 
 MODNAME="ssd1306_drv.ko"
 
@@ -23,7 +24,7 @@ while [ ! -z "$1"  ] ; do
                 ;;
             --deploy)
                 echo "Deploy kernel module"
-                scp $MODNAME debian@${BBBIP}:/home/debian/
+                expect deploy.exp $MODNAME
                 ;;
             --kconfig)
                 echo "configure kernel"
@@ -33,8 +34,12 @@ while [ ! -z "$1"  ] ; do
             --dtb)
                 echo "configure kernel"
                 make dtb
-                scp /home/user/KernelWorkshop/ops/bbb/module_dbg/KERNEL/arch/arm/boot/dts/am335x-boneblack.dtb debian@${BBBIP}:/home/debian/
+                expect deploy.exp $DTB_PATH/am335x-boneblack.dtb
                 ;;
+	    *)
+		echo "No such command"
+		exit
+		;;
         esac
         shift
 done

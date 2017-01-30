@@ -1,0 +1,30 @@
+#!/usr/bin/expect
+
+set user "debian"
+set password "temppwd"
+
+set file [lindex $argv 0]
+
+if {$file ne ""} {
+	spawn scp $file $user@192.168.7.2:
+	expect {
+	  busy               { puts busy\n ;  exit }  
+	  failed             { puts failed\n ; exit }
+	  timeout            { puts timeout\n ; exit }
+	  "password:"		 { send $password\r
+	    expect {
+		  busy               { puts pbusy\n ;  exit }  
+	      failed             { puts pfailed\n ; exit }
+	      timeout            { puts ptimeout\n ; exit }
+	      #"$"	{ puts "done.\n" }
+	  	}
+	  }
+	}
+} else {
+	puts "invalid filename parameter\n"
+}
+
+#"invalid password" { puts invalid\n ; abort }   
+  #connected          { puts connected\n }
+
+
