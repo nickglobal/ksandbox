@@ -69,10 +69,9 @@
 static spinlock_t g_lock;
 
 static struct ssd1306_data *ssd1306;
-static struct timer_list g_tmr;
 
 static struct workqueue_struct *g_wq = NULL;
-static struct work_struct g_work;;
+static struct delayed_work g_dwork;
 
 enum {
 	SLEEP_PERIOD = 1000 /* ms */
@@ -435,20 +434,8 @@ static void work_func(struct work_struct *work)
 	spin_unlock_irq(&g_lock);
 
 	++ g_cnt;
-}
 
-
-static void timer_tick(unsigned long val)
-{
-	queue_work(g_wq, &g_work);
-	mod_timer(&g_tmr, jiffies + msecs_to_jiffies(SLEEP_PERIOD));
-}
-
-
-static void enable_timer(void)
-{
-	setup_timer(&g_tmr, timer_tick, 0);
-	mod_timer(&g_tmr, jiffies + msecs_to_jiffies(SLEEP_PERIOD));
+	queue_delayed_work(g_wq, &g_dwork, msecs_to_jiffies(SLEEP_PERIOD));
 }
 
 
@@ -500,16 +487,15 @@ ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
     ssd1306_Puts(ssd1306, g_greet_str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
     ssd1306_UpdateScreen(ssd1306);
 
-    msleep(SLEEP_PERIOD);
+    msleep(SLEEP_PERIOD * 3);
 
     ssd1306_GotoXY(ssd1306, 8, 25);
     ssd1306_Puts(ssd1306, g_clr_str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
     ssd1306_UpdateScreen(ssd1306);
 
-    enable_timer();
     g_wq = create_singlethread_workqueue("my workqueue");
-    INIT_WORK(&g_work, work_func);
-    schedule_work(&g_work);
+    INIT_DELAYED_WORK(&g_dwork, work_func);
+    schedule_delayed_work(&g_dwork, msecs_to_jiffies(SLEEP_PERIOD));
 
     spin_unlock(&g_lock);
 
@@ -522,7 +508,9 @@ ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
 static int
 ssd1306_remove(struct i2c_client *client)
 {
-	del_timer(&g_tmr);
+	cancel_delayed_work(&g_dwork);
+	flush_delayed_work(&g_dwork);
+
 	flush_workqueue(g_wq);
 	destroy_workqueue(g_wq);
 
