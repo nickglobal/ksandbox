@@ -17,8 +17,7 @@
 #include <linux/delay.h>
 #include <linux/time.h>
 
-#include <linux/kthread.h>
-#include <linux/semaphore.h>
+#include <linux/spinlock.h>
 #include <linux/workqueue.h>
 
 #include <linux/i2c.h>
@@ -67,6 +66,23 @@
 */
 
 
+static spinlock_t g_lock;
+
+static struct ssd1306_data *ssd1306;
+
+static struct workqueue_struct *g_wq = NULL;
+static struct delayed_work g_dwork;
+
+enum {
+	SLEEP_PERIOD = 1000 /* ms */
+};
+
+static char g_cnt_str[32] = {0};
+static unsigned long g_cnt = 0;
+
+static char* g_greet_str = "Hi Any One !!!";
+static char* g_clr_str = "              ";
+
 
 /* Private SSD1306 structure */
 struct dpoz{
@@ -94,15 +110,12 @@ enum {
 };
 
 
-
-
 /**
 * @brief SSD1306 color enumeration
 */
 typedef enum {
         SSD1306_COLOR_BLACK = 0x00,   /*!< Black color, no pixel */
         SSD1306_COLOR_WHITE = 0x01,   /*!< Pixel is set. Color depends on LCD */
-        SSD1306_COLOR_X = 0x02, 	/* who knows...*/
 } ssd1306_COLOR_t;
 
 /* i2c device_id structure */
@@ -229,7 +242,7 @@ TM_FontDef_t TM_Font_7x10 = {
 };
 
 
-//
+
 int ssd1306_DrawPixel(struct ssd1306_data *drv_data, u16 x, u16 y, ssd1306_COLOR_t color);
 int ssd1306_GotoXY(struct ssd1306_data *drv_data, u16 x, u16 y);
 char ssd1306_Putc(struct ssd1306_data *drv_data, char ch, TM_FontDef_t* Font, ssd1306_COLOR_t color);
@@ -297,7 +310,6 @@ int ssd1306_UpdateScreen(struct ssd1306_data *drv_data) {
     char i;
 
     drv_client = drv_data->client;
-
     for (m = 0; m < 8; m++) {
         i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0 + m);
         i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
@@ -307,7 +319,6 @@ int ssd1306_UpdateScreen(struct ssd1306_data *drv_data) {
             i2c_smbus_write_byte_data(drv_client, 0x40, ssd1306_Buffer[SSD1306_WIDTH*m +i]);
         }   
     }
-
     return 0;
 }
 /**/
@@ -333,6 +344,7 @@ int ssd1306_DrawPixel(struct ssd1306_data *drv_data, u16 x, u16 y, ssd1306_COLOR
 
     return 0;
 }
+
 
 /**/
 int ssd1306_GotoXY(struct ssd1306_data *drv_data, u16 x, u16 y) {
@@ -410,67 +422,40 @@ int ssd1306_OFF(struct ssd1306_data *drv_data) {
 }
 
 
-
-
-static struct ssd1306_data *ssd1306;
-
-enum {
-	SLEEP_PERIOD = 3000 /* ms */
-};
-
-static char g_cnt_str[16] = {0};
-static unsigned long g_cnt = 0;
-static struct timer_list g_tmr;
-
-void timer_tick(unsigned long val)
+static void work_func(struct work_struct *work)
 {
-
-	unsigned long exp = 0;
-
 	sprintf(g_cnt_str, "%lu", g_cnt);
-	pr_info("tmr:" "--%s--", g_cnt_str);
 
 	ssd1306_GotoXY(ssd1306, 8, 25);
-
 	ssd1306_Puts(ssd1306, g_cnt_str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
 
+	spin_lock_irq(&g_lock);
 	ssd1306_UpdateScreen(ssd1306);
+	spin_unlock_irq(&g_lock);
 
 	++ g_cnt;
-	exp = jiffies + msecs_to_jiffies(SLEEP_PERIOD);
-	mod_timer(&g_tmr, exp);
 
+	queue_delayed_work(g_wq, &g_dwork, msecs_to_jiffies(SLEEP_PERIOD));
 }
 
-
-int enable_timer(void)
-{
-	int rc = 0;
-	//unsigned long exp = 0;
-
-	setup_timer(&g_tmr, timer_tick, 0);
-
-	//exp = jiffies + msecs_to_jiffies(SLEEP_PERIOD);
-	mod_timer(&g_tmr, jiffies);
-
-	return rc;
-}
-
-
-static char* g_greet_str = "Hi AnyAll !!!";
 
 static int
 ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
 {
     struct i2c_adapter *adapter;
 
-    printk(KERN_ERR "init I2C driver\n");
+    pr_info("init I2C driver\n");
 
+
+    spin_lock_init(&g_lock);
+    spin_lock(&g_lock);
 
     ssd1306 = devm_kzalloc(&drv_client->dev, sizeof(struct ssd1306_data),
                         GFP_KERNEL);
-    if (!ssd1306)
-        return -ENOMEM;
+    if (!ssd1306) {
+	    spin_unlock(&g_lock);
+	    return -ENOMEM;
+    }
 
     ssd1306->client = drv_client;
     ssd1306->status = 0xABCD;
@@ -481,38 +466,53 @@ ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
 
     if (!adapter)
     {
-        dev_err(&drv_client->dev, "adapter indentification error\n");
+	devm_kfree(&drv_client->dev, ssd1306);
+	spin_unlock(&g_lock);
+	dev_err(&drv_client->dev, "adapter indentification error\n");
         return -ENODEV;
     }
 
-    printk(KERN_ERR "I2C client address %d \n", drv_client->addr);
+    pr_info("I2C client address %d \n", drv_client->addr);
 
     if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA)) {
+	    devm_kfree(&drv_client->dev, ssd1306);
+	    spin_unlock(&g_lock);
             dev_err(&drv_client->dev, "operation not supported\n");
             return -ENODEV;
     }
 
-    //cra[]
-    ssd1306_init_lcd( drv_client);
+    ssd1306_init_lcd(drv_client);
+
     ssd1306_GotoXY(ssd1306, 8, 25);
     ssd1306_Puts(ssd1306, g_greet_str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
     ssd1306_UpdateScreen(ssd1306);
-    dev_err(&drv_client->dev, "ssd1306 driver successfully loaded\n");
 
-    enable_timer();
+    msleep(SLEEP_PERIOD * 3);
+
+    ssd1306_GotoXY(ssd1306, 8, 25);
+    ssd1306_Puts(ssd1306, g_clr_str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
+    ssd1306_UpdateScreen(ssd1306);
+
+    g_wq = create_singlethread_workqueue("my workqueue");
+    INIT_DELAYED_WORK(&g_dwork, work_func);
+    schedule_delayed_work(&g_dwork, msecs_to_jiffies(SLEEP_PERIOD));
+
+    spin_unlock(&g_lock);
+
+    dev_info(&drv_client->dev, "ssd1306 driver successfully loaded\n");
 
     return 0;
 }
 
+
 static int
 ssd1306_remove(struct i2c_client *client)
 {
-	ssd1306_GotoXY(ssd1306, 8, 25);
-	ssd1306_Puts(ssd1306, g_greet_str, &TM_Font_7x10, SSD1306_COLOR_BLACK);
-	ssd1306_UpdateScreen(ssd1306);
+	cancel_delayed_work(&g_dwork);
+	flush_delayed_work(&g_dwork);
 
-
-	del_timer(&g_tmr);
+	flush_workqueue(g_wq);
+	destroy_workqueue(g_wq);
 
         devm_kfree(&client->dev, ssd1306);
 
@@ -532,6 +532,7 @@ static struct i2c_driver ssd1306_driver = {
 
 
 /* Module init */
+
 static int __init ssd1306_init ( void )
 {
     int ret;
@@ -551,6 +552,7 @@ static int __init ssd1306_init ( void )
 }
 
 /* Module exit */
+
 static void __exit ssd1306_exit(void)
 {
     i2c_del_driver(&ssd1306_driver);

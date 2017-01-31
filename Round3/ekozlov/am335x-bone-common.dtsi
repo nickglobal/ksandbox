@@ -24,6 +24,7 @@
 		pinctrl-1 = <&user_leds_sleep>;
 
 		compatible = "gpio-leds";
+		status = "disabled";
 
 		led@2 {
 			label = "beaglebone:green:usr0";
@@ -53,6 +54,45 @@
 			default-state = "off";
 		};
 	};
+
+	/* ekozlov custom leds */
+	ekc-gpio-leds {
+		/*
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&user_leds_default>;
+		pinctrl-1 = <&user_leds_sleep>;
+		*/
+		compatible = "ekc-gpio-leds";
+
+		led@2 {
+			label = "beaglebone:green:usr0";
+			gpios = <&gpio1 21 GPIO_ACTIVE_HIGH>;
+			/* linux,default-trigger = "heartbeat"; */
+			default-state = "off";
+		};
+
+		led@3 {
+			label = "beaglebone:green:usr1";
+			gpios = <&gpio1 22 GPIO_ACTIVE_HIGH>;
+			/* linux,default-trigger = "mmc0"; */
+			default-state = "off";
+		};
+
+		led@4 {
+			label = "beaglebone:green:usr2";
+			gpios = <&gpio1 23 GPIO_ACTIVE_HIGH>;
+			/* linux,default-trigger = "cpu0"; */
+			default-state = "off";
+		};
+
+		led@5 {
+			label = "beaglebone:green:usr3";
+			gpios = <&gpio1 24 GPIO_ACTIVE_HIGH>;
+			/* linux,default-trigger = "mmc1"; */
+			default-state = "off";
+		};
+	};
+
 
 	vmmcsd_fixed: fixedregulator@0 {
 		compatible = "regulator-fixed";
@@ -240,9 +280,26 @@
 			reg = <0 0x100>;
 		};
 	};
+
+
+	glgyro: glgyro@68 {
+		compatible = "mpu6050";
+		reg = <0x68>;
+
+		interrupt-parent = <&gpio1>;
+		interrupts = <17 1>;
+
+		mount-matrix = "-0.984807753012208",  /* x0 */
+               "0",                   /* y0 */
+               "-0.173648177666930",  /* z0 */
+               "0",                   /* x1 */
+               "-1",                  /* y1 */
+               "0",                   /* z1 */
+               "-0.173648177666930",  /* x2 */
+               "0",                   /* y2 */
+               "0.984807753012208";   /* z2 */
+	};
 };
-
-
 
 &i2c2 {
 	pinctrl-names = "default";
@@ -290,14 +347,11 @@
 			reg = <0 0x100>;
 		};
 	};
-
-
+	
 	oled_display: oled_display@3c {
 		compatible = "ssd1306";
 		reg = <0x3c>;
-		
-	};
-
+	};	
 };
 
 
