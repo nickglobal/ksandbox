@@ -18,13 +18,13 @@
 		reg = <0x80000000 0x10000000>; /* 256 MB */
 	};
 
-/* ***************************************************
 	leds {
 		pinctrl-names = "default", "sleep";
 		pinctrl-0 = <&user_leds_default>;
 		pinctrl-1 = <&user_leds_sleep>;
 
 		compatible = "gpio-leds";
+		status = "disabled";
 
 		led@2 {
 			label = "beaglebone:green:usr0";
@@ -54,7 +54,6 @@
 			default-state = "off";
 		};
 	};
-************************************************** */
 
 	vmmcsd_fixed: fixedregulator@0 {
 		compatible = "regulator-fixed";
