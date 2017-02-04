@@ -65,7 +65,7 @@ static ssize_t timeOnOff_show(struct class *class, struct class_attribute *class
 
 	led = container_of(classAttr, SANB_LEDS, classAttrOnOff);
 
-	size = sprintf(buf, "%u:%u\n", led->timeOn, led->timeOff);
+	size = scnprintf(buf, PAGE_SIZE, "%u:%u\n", led->timeOn, led->timeOff);
 	return size;
 }
 
@@ -84,7 +84,7 @@ static ssize_t timeOnOff_store(struct class *class, struct class_attribute *clas
 	{
 		printk(KERN_ERR "@@@ classAttr->attr.name = [%s]: can not recognize the string \"%s\"\n",
 					classAttr->attr.name, buf);
-		return 0;
+		return -EINVAL;
 	}
 
 	led->timeOn = timeOn;
@@ -107,7 +107,7 @@ static ssize_t frequency_show(struct class *class, struct class_attribute *class
 	led = container_of(classAttr, SANB_LEDS, classAttrFreq);
 	f = 1000/(led->timeOn + led->timeOff);
 	fraction = 1000%(led->timeOn + led->timeOff)*1000/(led->timeOn + led->timeOff);
-	size = sprintf(buf, (fraction!=0 ? "~%u.%.3u\n" : "%u\n"), f, fraction );
+	size = scnprintf(buf, PAGE_SIZE, (fraction!=0 ? "~%u.%.3u\n" : "%u\n"), f, fraction );
 	return size;
 }
 
@@ -126,7 +126,7 @@ static ssize_t frequency_store(struct class *class, struct class_attribute *clas
 	{
 		printk(KERN_ERR "@@@ classAttr->attr.name = [%s]: can not recognize the string \"%s\"\n",
 					classAttr->attr.name, buf);
-		return 0;
+		return -EINVAL;
 	}
 
 	//Set meander:
