@@ -8,11 +8,14 @@
 #include <linux/leds.h>
 #include <linux/gpio/consumer.h>
 
+#define TOTAL_TIME 1000 // ms
+
 static int gpio_delete(void);
 
 struct gpio_led_data {
     struct class *pt_led_class;
     struct gpio_desc *gpiod;
+    struct timer_list blink_timer;
     const char *pc_name;
     u32 ui_work_time;
     bool b_enabled;
@@ -30,15 +33,6 @@ static void led_handler(struct gpio_led_data *px_led)
 {
     if (NULL != px_led)
     {
-        if (px_led->ui_work_time)
-        {
-            px_led->b_enabled = true;
-        }
-        else
-        {
-            px_led->b_enabled = false;
-        }
-
         gpiod_direction_output(px_led->gpiod, px_led->b_enabled);
     }
 }
@@ -81,7 +75,27 @@ static ssize_t sys_class_work_time_store(struct class *class, struct class_attri
                     return -1;
                 }
 
+                if (ui_work_time > TOTAL_TIME)
+                {
+                    printk("ERROR: WORK TIME VALUE IS TOO LARGE: %u, MAXIMUM %u\n", ui_work_time, TOTAL_TIME);
+                    ui_work_time = TOTAL_TIME;
+                }
 	        priv->px_leds[i].ui_work_time = ui_work_time;
+
+                if (priv->px_leds[i].ui_work_time)
+                {
+                    priv->px_leds[i].b_enabled = true;
+                    if (priv->px_leds[i].ui_work_time < TOTAL_TIME)
+                    {
+                        mod_timer(&priv->px_leds[i].blink_timer,
+                                  jiffies + msecs_to_jiffies(priv->px_leds[i].ui_work_time));
+                    }
+                }
+                else
+                {
+                    priv->px_leds[i].b_enabled = false;
+                }
+
                 led_handler(&priv->px_leds[i]);
                 break;
             }
@@ -91,6 +105,35 @@ static ssize_t sys_class_work_time_store(struct class *class, struct class_attri
     return count;
 }
 
+static void blink_timer_callback(unsigned long ul_data)
+{
+    struct gpio_led_data *px_led = (struct gpio_led_data *)ul_data;
+
+    if (NULL != px_led)
+    {
+        led_handler(px_led);
+
+        if ((px_led->ui_work_time > 0) && (px_led->ui_work_time < TOTAL_TIME))
+        {
+            // operate with blinking
+            if (px_led->b_enabled)
+            {
+                // "on" interval
+                mod_timer(&px_led->blink_timer, jiffies + msecs_to_jiffies(px_led->ui_work_time));
+            }
+            else
+            {
+                // "off" interval
+                mod_timer(&px_led->blink_timer, jiffies + msecs_to_jiffies(TOTAL_TIME - px_led->ui_work_time));
+            }
+            px_led->b_enabled = !px_led->b_enabled;
+        }
+    }
+    else
+    {
+        printk("ERROR: TIMER HANDLER HAS NULL LED POINTER\n");
+    }
+}
 
 static int gpio_probe(struct platform_device *pdev)
 {
@@ -165,6 +208,8 @@ static int gpio_probe(struct platform_device *pdev)
             return ret;
         }
 
+        setup_timer(&px_curr_led->blink_timer, blink_timer_callback, (unsigned long)px_curr_led);
+
         printk("LED REGISTERED: NAME <%s>, TIME <%u>\n", px_curr_led->pc_name, px_curr_led->ui_work_time);
 
         i++;
@@ -173,7 +218,8 @@ static int gpio_probe(struct platform_device *pdev)
 
     for (i = 0; i < priv->num_leds; i++)
     {
-       led_handler(&priv->px_leds[i]);
+       // initial led set and timer start if needed
+       blink_timer_callback((unsigned long)&priv->px_leds[i]);
     }
 
     platform_set_drvdata(pdev, priv);
@@ -183,6 +229,7 @@ static int gpio_probe(struct platform_device *pdev)
 
 static void delete_gpio_led(struct gpio_led_data *px_led)
 {
+    del_timer_sync(&px_led->blink_timer);
     class_remove_file(px_led->pt_led_class, &t_class_attrs);
     class_destroy(px_led->pt_led_class);
 }
