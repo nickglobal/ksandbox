@@ -28,6 +28,8 @@
 #define CLASS_NAME  "oled_display" 
 #define BUS_NAME    "i2c_1"
 
+#define SSD1306_TAG "ssd1306"
+
 #define SSD1306_WIDTH 128
 #define SSD1306_HEIGHT 64
 
@@ -70,8 +72,14 @@ static spinlock_t g_lock;
 
 static struct ssd1306_data *ssd1306;
 
-static struct workqueue_struct *g_wq = NULL;
+static struct workqueue_struct *g_wq;
 static struct delayed_work g_dwork;
+
+static struct class *g_ssd1306_class;
+static struct class_attribute g_ssd1306_class_attr;
+
+static u32 g_interval = 1000; /* tick interval, ms */
+
 
 enum {
 	SLEEP_PERIOD = 1000 /* ms */
@@ -422,20 +430,81 @@ int ssd1306_OFF(struct ssd1306_data *drv_data) {
 }
 
 
-static void work_func(struct work_struct *work)
+static ssize_t
+ssd1306_tick_interval_show(
+	struct class *class,
+	struct class_attribute *attr,
+	char *buf)
 {
+	sprintf(buf, "%u", g_interval);
+	return strlen(buf);
+}
+
+
+static ssize_t
+ssd1306_tick_interval_store(
+	struct class *class,
+	struct class_attribute *attr,
+	const char *buf,
+	size_t count)
+{
+	int rc = 0;
+	u32 interval = 0;
+
+	rc = sscanf(buf, "%u", &interval);
+	if (rc == 1) {
+		g_interval = interval;
+		pr_info(SSD1306_TAG "new interval value: %u", g_interval);
+	} else
+		pr_warn(SSD1306_TAG "invalid interval value: '%s'", buf);
+
+	return strlen(buf);
+}
+
+
+static int
+ssd1306_class_create(
+	struct class** 		ssd1306_class,
+	struct class_attribute*	ssd1306_class_attr)
+{
+	int rc = 0;
+
+	if (ssd1306_class == NULL)
+		return -EINVAL;
+
+	*ssd1306_class = class_create(THIS_MODULE, "ssd1306");
+	if (IS_ERR(*ssd1306_class)) {
+		pr_err("Class was not created");
+		return (PTR_ERR(*ssd1306_class));
+	}
+
+	ssd1306_class_attr->attr.mode = 0600;
+	ssd1306_class_attr->attr.name = "tick-interval";
+	ssd1306_class_attr->show = ssd1306_tick_interval_show;
+	ssd1306_class_attr->store = ssd1306_tick_interval_store;
+
+	rc = class_create_file(*ssd1306_class, ssd1306_class_attr);
+	if (rc) {
+		pr_err("Class file was not created (%d)", rc);
+		class_destroy(*ssd1306_class);
+		return rc;
+	}
+
+	return rc;
+}
+
+
+static void
+ssd1306_tick_work(struct work_struct *work)
+{
+	queue_delayed_work(g_wq, &g_dwork, msecs_to_jiffies(g_interval));
 	sprintf(g_cnt_str, "%lu", g_cnt);
 
 	ssd1306_GotoXY(ssd1306, 8, 25);
 	ssd1306_Puts(ssd1306, g_cnt_str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
-
-	spin_lock_irq(&g_lock);
 	ssd1306_UpdateScreen(ssd1306);
-	spin_unlock_irq(&g_lock);
 
 	++ g_cnt;
-
-	queue_delayed_work(g_wq, &g_dwork, msecs_to_jiffies(SLEEP_PERIOD));
 }
 
 
@@ -493,9 +562,13 @@ ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
     ssd1306_Puts(ssd1306, g_clr_str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
     ssd1306_UpdateScreen(ssd1306);
 
+
+    if (ssd1306_class_create(&g_ssd1306_class, &g_ssd1306_class_attr))
+	    pr_err("Cannot create class and files");
+
     g_wq = create_singlethread_workqueue("my workqueue");
-    INIT_DELAYED_WORK(&g_dwork, work_func);
-    schedule_delayed_work(&g_dwork, msecs_to_jiffies(SLEEP_PERIOD));
+    INIT_DELAYED_WORK(&g_dwork, ssd1306_tick_work);
+    schedule_delayed_work(&g_dwork, msecs_to_jiffies(g_interval));
 
     spin_unlock(&g_lock);
 
@@ -510,13 +583,15 @@ ssd1306_remove(struct i2c_client *client)
 {
 	cancel_delayed_work(&g_dwork);
 	flush_delayed_work(&g_dwork);
-
 	flush_workqueue(g_wq);
 	destroy_workqueue(g_wq);
 
+	class_remove_file(g_ssd1306_class, &g_ssd1306_class_attr);
+	class_destroy(g_ssd1306_class);
+
         devm_kfree(&client->dev, ssd1306);
 
-	return 0;
+        return 0;
 }
 
 
@@ -525,15 +600,14 @@ static struct i2c_driver ssd1306_driver = {
         .name = DEVICE_NAME,
      },
 
-    .probe       = ssd1306_probe ,
+    .probe       = ssd1306_probe,
     .remove      = ssd1306_remove,
     .id_table    = ssd1306_idtable,
 };
 
 
-/* Module init */
-
-static int __init ssd1306_init ( void )
+static int __init
+ssd1306_init ( void )
 {
     int ret;
     /*
@@ -551,9 +625,9 @@ static int __init ssd1306_init ( void )
     return ret;
 }
 
-/* Module exit */
 
-static void __exit ssd1306_exit(void)
+static void __exit
+ssd1306_exit(void)
 {
     i2c_del_driver(&ssd1306_driver);
     printk(KERN_ERR "ssd1306: cleanup\n");  
