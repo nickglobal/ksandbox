@@ -16,19 +16,23 @@
 #include <linux/proc_fs.h>
 #include <linux/delay.h>
 #include <linux/time.h>
+#include <linux/slab.h>
+#include <linux/errno.h>
+#include <linux/types.h>
+#include <linux/cdev.h>
 
-#include <linux/spinlock.h>
+#include <linux/kthread.h>
+#include <linux/semaphore.h>
 #include <linux/workqueue.h>
 
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
+#include "pkdisp.h"
 
 
 #define DEVICE_NAME "ssd1306"
 #define CLASS_NAME  "oled_display" 
 #define BUS_NAME    "i2c_1"
-
-#define SSD1306_TAG "ssd1306"
 
 #define SSD1306_WIDTH 128
 #define SSD1306_HEIGHT 64
@@ -68,28 +72,14 @@
 */
 
 
-static spinlock_t g_lock;
+static struct pkdisp disp = {0};
 
-static struct ssd1306_data *ssd1306;
-
-static struct workqueue_struct *g_wq;
-static struct delayed_work g_dwork;
-
-static struct class *g_ssd1306_class;
-static struct class_attribute g_ssd1306_class_attr;
-
-static u32 g_interval = 1000; /* tick interval, ms */
-
-
-enum {
-	SLEEP_PERIOD = 1000 /* ms */
+static struct file_operations pkdisp_dev_ops = {
+	.owner   = THIS_MODULE,
+	.llseek  = pkdisp_llseek,
+	.read    = pkdisp_read,
+	.write   = pkdisp_write,
 };
-
-static char g_cnt_str[32] = {0};
-static unsigned long g_cnt = 0;
-
-static char* g_greet_str = "Hi Any One !!!";
-static char* g_clr_str = "              ";
 
 
 /* Private SSD1306 structure */
@@ -118,12 +108,14 @@ enum {
 };
 
 
+
+
 /**
 * @brief SSD1306 color enumeration
 */
 typedef enum {
         SSD1306_COLOR_BLACK = 0x00,   /*!< Black color, no pixel */
-        SSD1306_COLOR_WHITE = 0x01,   /*!< Pixel is set. Color depends on LCD */
+        SSD1306_COLOR_WHITE = 0x01    /*!< Pixel is set. Color depends on LCD */
 } ssd1306_COLOR_t;
 
 /* i2c device_id structure */
@@ -250,7 +242,7 @@ TM_FontDef_t TM_Font_7x10 = {
 };
 
 
-
+//
 int ssd1306_DrawPixel(struct ssd1306_data *drv_data, u16 x, u16 y, ssd1306_COLOR_t color);
 int ssd1306_GotoXY(struct ssd1306_data *drv_data, u16 x, u16 y);
 char ssd1306_Putc(struct ssd1306_data *drv_data, char ch, TM_FontDef_t* Font, ssd1306_COLOR_t color);
@@ -269,16 +261,15 @@ static void ssd1306_init_lcd(struct i2c_client *drv_client) {
     	/* Init LCD */
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xAE); //display off
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x20); //Set Memory Addressing Mode
-    	    	    	    	    	    /*0x10 originally*/
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x00); //00,Horizontal Addressing Mode;01,Vertical Addressing Mode;10,Page Addressing Mode (RESET);11,Invalid
-
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x10); //00,Horizontal Addressing Mode;01,Vertical Addressing Mode;10,Page Addressing Mode (RESET);11,Invalid
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0); //Set Page Start Address for Page Addressing Mode,0-7
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xC8); //Set COM Output Scan Direction
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x00); //---set low column address
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x10); //---set high column address
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x40); //--set start line address
     i2c_smbus_write_byte_data(drv_client, 0x00, 0x81); //--set contrast control register
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x01);
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xFF);
+    //i2c_smbus_write_byte_data(drv_client, 0x00, 0x01);
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xA1); //--set segment re-map 0 to 127
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xA6); //--set normal display
     i2c_smbus_write_byte_data(drv_client, 0x00, 0xA8); //--set multiplex ratio(1 to 64)
@@ -318,6 +309,7 @@ int ssd1306_UpdateScreen(struct ssd1306_data *drv_data) {
     char i;
 
     drv_client = drv_data->client;
+
     for (m = 0; m < 8; m++) {
         i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0 + m);
         i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
@@ -327,6 +319,7 @@ int ssd1306_UpdateScreen(struct ssd1306_data *drv_data) {
             i2c_smbus_write_byte_data(drv_client, 0x40, ssd1306_Buffer[SSD1306_WIDTH*m +i]);
         }   
     }
+
     return 0;
 }
 /**/
@@ -352,7 +345,6 @@ int ssd1306_DrawPixel(struct ssd1306_data *drv_data, u16 x, u16 y, ssd1306_COLOR
 
     return 0;
 }
-
 
 /**/
 int ssd1306_GotoXY(struct ssd1306_data *drv_data, u16 x, u16 y) {
@@ -429,168 +421,53 @@ int ssd1306_OFF(struct ssd1306_data *drv_data) {
     return 0;
 }
 
-
-static ssize_t
-ssd1306_tick_interval_show(
-	struct class *class,
-	struct class_attribute *attr,
-	char *buf)
-{
-	sprintf(buf, "%u", g_interval);
-	return strlen(buf);
-}
-
-
-static ssize_t
-ssd1306_tick_interval_store(
-	struct class *class,
-	struct class_attribute *attr,
-	const char *buf,
-	size_t count)
-{
-	int rc = 0;
-	u32 interval = 0;
-
-	rc = sscanf(buf, "%u", &interval);
-	if (rc == 1) {
-		g_interval = interval;
-		pr_info(SSD1306_TAG "new interval value: %u", g_interval);
-	} else
-		pr_warn(SSD1306_TAG "invalid interval value: '%s'", buf);
-
-	return strlen(buf);
-}
-
-
-static int
-ssd1306_class_create(
-	struct class** 		ssd1306_class,
-	struct class_attribute*	ssd1306_class_attr)
-{
-	int rc = 0;
-
-	if (ssd1306_class == NULL)
-		return -EINVAL;
-
-	*ssd1306_class = class_create(THIS_MODULE, "ssd1306");
-	if (IS_ERR(*ssd1306_class)) {
-		pr_err("Class was not created");
-		return (PTR_ERR(*ssd1306_class));
-	}
-
-	ssd1306_class_attr->attr.mode = 0600;
-	ssd1306_class_attr->attr.name = "tick-interval";
-	ssd1306_class_attr->show = ssd1306_tick_interval_show;
-	ssd1306_class_attr->store = ssd1306_tick_interval_store;
-
-	rc = class_create_file(*ssd1306_class, ssd1306_class_attr);
-	if (rc) {
-		pr_err("Class file was not created (%d)", rc);
-		class_destroy(*ssd1306_class);
-		return rc;
-	}
-
-	return rc;
-}
-
-
-static void
-ssd1306_tick_work(struct work_struct *work)
-{
-	queue_delayed_work(g_wq, &g_dwork, msecs_to_jiffies(g_interval));
-	sprintf(g_cnt_str, "%lu", g_cnt);
-
-	ssd1306_GotoXY(ssd1306, 8, 25);
-	ssd1306_Puts(ssd1306, g_cnt_str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
-	ssd1306_UpdateScreen(ssd1306);
-
-	++ g_cnt;
-}
-
-
 static int
 ssd1306_probe(struct i2c_client *drv_client, const struct i2c_device_id *id)
 {
     struct i2c_adapter *adapter;
 
-    pr_info("init I2C driver\n");
+    printk(KERN_ERR "init I2C driver\n");
 
 
-    spin_lock_init(&g_lock);
-    spin_lock(&g_lock);
-
-    ssd1306 = devm_kzalloc(&drv_client->dev, sizeof(struct ssd1306_data),
+    disp.ssd1306 = devm_kzalloc(&drv_client->dev, sizeof(struct ssd1306_data),
                         GFP_KERNEL);
-    if (!ssd1306) {
-	    spin_unlock(&g_lock);
-	    return -ENOMEM;
-    }
+    if (!disp.ssd1306)
+        return -ENOMEM;
 
-    ssd1306->client = drv_client;
-    ssd1306->status = 0xABCD;
+    disp.ssd1306->client = drv_client;
+    disp.ssd1306->status = 0xABCD;
 
-    i2c_set_clientdata(drv_client, ssd1306);
+    i2c_set_clientdata(drv_client, disp.ssd1306);
 
     adapter = drv_client->adapter;
 
     if (!adapter)
     {
-	devm_kfree(&drv_client->dev, ssd1306);
-	spin_unlock(&g_lock);
-	dev_err(&drv_client->dev, "adapter indentification error\n");
+        dev_err(&drv_client->dev, "adapter indentification error\n");
         return -ENODEV;
     }
 
-    pr_info("I2C client address %d \n", drv_client->addr);
+    printk(KERN_ERR "I2C client address %d \n", drv_client->addr);
 
     if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA)) {
-	    devm_kfree(&drv_client->dev, ssd1306);
-	    spin_unlock(&g_lock);
             dev_err(&drv_client->dev, "operation not supported\n");
             return -ENODEV;
     }
 
-    ssd1306_init_lcd(drv_client);
+    //cra[]
+    ssd1306_init_lcd( drv_client);
+    ssd1306_GotoXY(disp.ssd1306, 8, 25);
+    ssd1306_Puts(disp.ssd1306, "HELLO GLOBALLOGIC", &TM_Font_7x10, SSD1306_COLOR_WHITE);
+    ssd1306_UpdateScreen(disp.ssd1306);
 
-    ssd1306_GotoXY(ssd1306, 8, 25);
-    ssd1306_Puts(ssd1306, g_greet_str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
-    ssd1306_UpdateScreen(ssd1306);
-
-    msleep(SLEEP_PERIOD * 3);
-
-    ssd1306_GotoXY(ssd1306, 8, 25);
-    ssd1306_Puts(ssd1306, g_clr_str, &TM_Font_7x10, SSD1306_COLOR_WHITE);
-    ssd1306_UpdateScreen(ssd1306);
-
-
-    if (ssd1306_class_create(&g_ssd1306_class, &g_ssd1306_class_attr))
-	    pr_err("Cannot create class and files");
-
-    g_wq = create_singlethread_workqueue("my workqueue");
-    INIT_DELAYED_WORK(&g_dwork, ssd1306_tick_work);
-    schedule_delayed_work(&g_dwork, msecs_to_jiffies(g_interval));
-
-    spin_unlock(&g_lock);
-
-    dev_info(&drv_client->dev, "ssd1306 driver successfully loaded\n");
+    dev_err(&drv_client->dev, "disp.ssd1306 driver successfully loaded\n");
 
     return 0;
 }
 
-
 static int
 ssd1306_remove(struct i2c_client *client)
 {
-	cancel_delayed_work(&g_dwork);
-	flush_delayed_work(&g_dwork);
-	flush_workqueue(g_wq);
-	destroy_workqueue(g_wq);
-
-	class_remove_file(g_ssd1306_class, &g_ssd1306_class_attr);
-	class_destroy(g_ssd1306_class);
-
-        devm_kfree(&client->dev, ssd1306);
-
         return 0;
 }
 
@@ -600,14 +477,147 @@ static struct i2c_driver ssd1306_driver = {
         .name = DEVICE_NAME,
      },
 
-    .probe       = ssd1306_probe,
+    .probe       = ssd1306_probe ,
     .remove      = ssd1306_remove,
     .id_table    = ssd1306_idtable,
 };
 
+/* push picture to OLED */
+void pkdisp_flush (void)
+{
+	int x,y;
 
-static int __init
-ssd1306_init ( void )
+    ssd1306_GotoXY(disp.ssd1306, 0, 0);
+
+	for (y=0; y<DISP_H; y++)
+		for (x=0; x<DISP_W; x++)
+			ssd1306_DrawPixel(disp.ssd1306, x, y,
+					disp.buf[y*DISP_W+x]>'0'?SSD1306_COLOR_WHITE:SSD1306_COLOR_BLACK);
+
+    ssd1306_UpdateScreen(disp.ssd1306);
+}
+
+/* File operations */
+loff_t  pkdisp_llseek (struct file *filep, loff_t off, int whence)
+{
+	loff_t newpos;
+
+	switch(whence) {
+		case 0: /* SEEK_SET */
+			newpos = off;
+			break;
+
+		case 1: /* SEEK_CUR */
+			newpos = filep->f_pos + off;
+			break;
+
+		case 2: /* SEEK_END */
+			newpos = DISP_BUFSIZE + off;
+			break;
+
+		default: /* can't happen */
+			return -EINVAL;
+	}
+	if (newpos < 0) newpos = 0;
+	if (newpos >= DISP_BUFSIZE) newpos = DISP_BUFSIZE-1;
+	filep->f_pos = newpos;
+	return newpos;
+}
+
+ssize_t pkdisp_read   (struct file *filep, char __user *data, size_t size, loff_t *offset)
+{
+	/* do not go out of buffer */
+	if ((*offset+size) > DISP_BUFSIZE) size = DISP_BUFSIZE - *offset;
+
+	if (copy_to_user(data, disp.buf + *offset, size))
+		return -EFAULT;
+
+	*offset += size;
+	return size;
+}
+
+ssize_t pkdisp_write  (struct file *filep, const char __user *data, size_t size, loff_t *offset)
+{
+	/* do not go out of buffer */
+	if ((*offset+size) > DISP_BUFSIZE) size = DISP_BUFSIZE - *offset;
+
+	if (copy_from_user(disp.buf + *offset, data, size))
+		return -EFAULT;
+
+	*offset += size;
+
+	pkdisp_flush();
+
+	return size;
+}
+
+static void pkdisp_unregister(void)
+{
+	if (!IS_ERR(disp.device))
+		device_destroy(&disp.class, disp.dev);
+	class_unregister(&disp.class);
+	cdev_del(&disp.cdev);
+	if(disp.buf)
+		kfree(disp.buf);
+	unregister_chrdev_region(disp.dev, 1);
+}
+
+static int __init pkdisp_init( void )
+{
+	int res;
+
+	res = alloc_chrdev_region(&disp.dev, 0, 1, DISP_NAME);
+	if (res < 0) {
+		printk(KERN_ERR "error alloc chrdev\n");
+		return res;
+	}
+
+	disp.buf = kzalloc(sizeof(char) * DISP_W * DISP_H, GFP_KERNEL);
+	if (!disp.buf) {
+		printk(KERN_ERR "error alloc memory for bufffer\n");
+		goto fail;
+	}
+
+	cdev_init(&disp.cdev, &pkdisp_dev_ops);
+	disp.cdev.owner = THIS_MODULE;
+	res = cdev_add(&disp.cdev, disp.dev, 1);
+	if (res) {
+		printk(KERN_ERR "error add chdev\n");
+		goto fail;
+	}
+
+	disp.class.name = DISP_NAME;
+	disp.class.owner = THIS_MODULE;
+	res = class_register(&disp.class);
+	if (res) {
+		printk(KERN_ERR "fail register class\n");
+		goto fail;
+	}
+
+	disp.device = device_create(&disp.class, NULL,
+			disp.dev, NULL, DISP_NAME);
+	if (IS_ERR(disp.device)) {
+		res = PTR_ERR(disp.device);
+		goto fail;
+	}
+
+	printk(KERN_INFO "The \"%s\" device registered (%d:%d)\n",
+			DISP_NAME, MAJOR(disp.dev), MINOR(disp.dev));
+	return 0;
+
+fail:
+	pkdisp_unregister();
+	return res;
+}
+
+static void __exit pkdisp_exit( void )
+{
+	pkdisp_unregister();
+	printk(KERN_INFO "The \"%s\" device removed\n",	DISP_NAME);
+}
+
+/* Module init */
+static int __init ssd1306_init ( void )
 {
     int ret;
     /*
@@ -622,15 +632,15 @@ ssd1306_init ( void )
         return ret;
     }
 
-    return ret;
+    return pkdisp_init();
 }
 
-
-static void __exit
-ssd1306_exit(void)
+/* Module exit */
+static void __exit ssd1306_exit(void)
 {
     i2c_del_driver(&ssd1306_driver);
     printk(KERN_ERR "ssd1306: cleanup\n");  
+	pkdisp_exit();
 }
 
 /* -------------- kernel thread description -------------- */
