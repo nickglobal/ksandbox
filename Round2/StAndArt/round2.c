@@ -30,6 +30,15 @@ static void led_handler(struct gpio_led_data *px_led)
 {
     if (NULL != px_led)
     {
+        if (px_led->ui_work_time)
+        {
+            px_led->b_enabled = true;
+        }
+        else
+        {
+            px_led->b_enabled = false;
+        }
+
         gpiod_direction_output(px_led->gpiod, px_led->b_enabled);
     }
 }
@@ -73,6 +82,7 @@ static ssize_t sys_class_work_time_store(struct class *class, struct class_attri
                 }
 
 	        priv->px_leds[i].ui_work_time = ui_work_time;
+                led_handler(&priv->px_leds[i]);
                 break;
             }
         }
@@ -97,7 +107,7 @@ static int gpio_probe(struct platform_device *pdev)
         return -ENXIO;
     }
     
-    printk("ARTEM NUM %d\n", num);
+    printk("LEDS NUMBER IS %d\n", num);
 
     priv = kzalloc(sizeof(struct gpio_priv) + sizeof(struct gpio_led_data) * num, GFP_KERNEL);
     if (!priv)
@@ -121,7 +131,6 @@ static int gpio_probe(struct platform_device *pdev)
             gpio_delete();
             return i_op_ret;
         }
-printk("ARTEM: LABEL %s FOR LED %d -> %x\n", px_curr_led->pc_name, i, (unsigned int)px_curr_led);
 
         i_op_ret = fwnode_property_read_u32(child, "work-time", &px_curr_led->ui_work_time);
         if (0 != i_op_ret)
@@ -147,7 +156,7 @@ printk("ARTEM: LABEL %s FOR LED %d -> %x\n", px_curr_led->pc_name, i, (unsigned 
             gpio_delete();
             return PTR_ERR(px_curr_led->pt_led_class);
         }
-printk("ARTEM: CLASS %x LED %s\n", (unsigned int)px_curr_led->pt_led_class, px_curr_led->pc_name);
+
 	ret = class_create_file(px_curr_led->pt_led_class, &t_class_attrs);
 	if (ret < 0)
         {
@@ -155,6 +164,8 @@ printk("ARTEM: CLASS %x LED %s\n", (unsigned int)px_curr_led->pt_led_class, px_c
             gpio_delete();
             return ret;
         }
+
+        printk("LED REGISTERED: NAME <%s>, TIME <%u>\n", px_curr_led->pc_name, px_curr_led->ui_work_time);
 
         i++;
     }

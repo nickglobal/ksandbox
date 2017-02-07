@@ -22,6 +22,7 @@
 		pinctrl-names = "default", "sleep";
 		pinctrl-0 = <&user_leds_default>;
 		pinctrl-1 = <&user_leds_sleep>;
+                status = "disabled";
 
 		compatible = "gpio-leds";
 
@@ -468,13 +469,13 @@
 
         led@2 {
             label = "LED1";
-            gpios = <&gpio1 25 GPIO_ACTIVE_HIGH>;
+            gpios = <&gpio1 21 GPIO_ACTIVE_HIGH>;
             work-time = <0>;
         };
 
         led@3 {
             label = "LED2";
-            gpios = <&gpio1 26 GPIO_ACTIVE_HIGH>;
+            gpios = <&gpio1 22 GPIO_ACTIVE_HIGH>;
             work-time = <100>;
         };
     };
