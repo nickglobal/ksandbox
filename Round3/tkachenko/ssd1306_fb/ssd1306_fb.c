@@ -16,13 +16,9 @@
 
 #define SCREEN_WIDTH  128
 #define SCREEN_HEIGHT 64
-#define PAGES_NUM     8
 
 #define SSD1306_BLOCK_SIZE 32
-
 #define SSD1306_SEND_COMMAND(c, d) i2c_smbus_write_byte_data((c), 0x00, (d))
-#define SSD1306_SEND_DATA_BLOCK(c, d) i2c_smbus_write_i2c_block_data( \
-		(c), 0x40, SSD1306_BLOCK_SIZE, (u8 *)(d))
 
 #define SET_LOW_COLUMN	0x00
 #define SET_HIGH_COLUMN	0x10
@@ -51,7 +47,7 @@ struct ssd1306_data {
 	struct work_struct      display_update_ws;
 	int						display_width;
 	int						display_height;
-	int						pages_number;
+	u8						display_data[];
 };
 
 /* -------------- hardware description -------------- */
@@ -114,6 +110,12 @@ static struct fb_ops ssd1306_ops = {
 	.fb_imageblit	= ssd1306_imageblit,
 };
 
+static inline int sizeof_ssd1306_data(int width, int height)
+{
+	return sizeof(struct ssd1306_data) + /* structure */
+		(width * height / 8) + 1; /* screen bits + command */
+}
+
 static void ssd1306_init_lcd(struct i2c_client *client)
 {
 	struct ssd1306_data *ssd1306 = i2c_get_clientdata(client);
@@ -124,10 +126,15 @@ static void ssd1306_init_lcd(struct i2c_client *client)
 
 	SSD1306_SEND_COMMAND(client, MEMORY_MODE);
 	SSD1306_SEND_COMMAND(client, SSD1306_MEM_MODE_HORIZONAL);
-	SSD1306_SEND_COMMAND(client, SET_START_PAGE); /* 0xB0~0xB7 */
-	SSD1306_SEND_COMMAND(client, SET_LOW_COLUMN);
-	SSD1306_SEND_COMMAND(client, SET_HIGH_COLUMN);
-	SSD1306_SEND_COMMAND(client, 0x40); /* set start line address */
+	/* Set column start / end */
+	SSD1306_SEND_COMMAND(client, COLUMN_ADDR);
+	SSD1306_SEND_COMMAND(client, 0);
+	SSD1306_SEND_COMMAND(client, (ssd1306->display_width - 1));
+
+	/* Set page start / end */
+	SSD1306_SEND_COMMAND(client, PAGE_ADDR);
+	SSD1306_SEND_COMMAND(client, 0);
+	SSD1306_SEND_COMMAND(client, (ssd1306->display_height / 8 - 1));
 
 	SSD1306_SEND_COMMAND(client, COM_SCAN_DEC);
 
@@ -137,13 +144,13 @@ static void ssd1306_init_lcd(struct i2c_client *client)
 	SSD1306_SEND_COMMAND(client, 0xA1); /* set segment re-map 0 to 127 */
 	SSD1306_SEND_COMMAND(client, SET_NORMAL_DISPLAY);
 	SSD1306_SEND_COMMAND(client, 0xA8); /* set multiplex ratio(1 to 64) */
-	SSD1306_SEND_COMMAND(client, 0x3F);
+	SSD1306_SEND_COMMAND(client, (ssd1306->display_height - 1));
 	SSD1306_SEND_COMMAND(client, 0xA4); /* 0xA4 => follows RAM content */
 	SSD1306_SEND_COMMAND(client, SET_DISPLAY_OFFSET);
 	SSD1306_SEND_COMMAND(client, 0x00); /* no offset */
 
 	SSD1306_SEND_COMMAND(client, SET_DISPLAY_CLOCK_DIV);
-	SSD1306_SEND_COMMAND(client, 0xA0); /* set divide ratio */
+	SSD1306_SEND_COMMAND(client, 0x80); /* set divide ratio */
 
 	SSD1306_SEND_COMMAND(client, SET_PRECHARGE);
 	SSD1306_SEND_COMMAND(client, 0x22);
@@ -233,27 +240,29 @@ int ssd1306_updateScreen(struct ssd1306_data *ssd1306)
 	struct i2c_client *client = ssd1306->client;
 	u8 *vmem = ssd1306->fbinfo->screen_base;
 	int vmem_size = ssd1306->fbinfo->fix.smem_len;
-	int chunks_num = vmem_size / SSD1306_BLOCK_SIZE;
-	int i;
+	int height = ssd1306->display_height;
+	int width = ssd1306->display_width;
+	int i, j, k;
+	u8 *array = &ssd1306->display_data[1];
 
-	SSD1306_SEND_COMMAND(client, SET_LOW_COLUMN);
-	SSD1306_SEND_COMMAND(client, SET_HIGH_COLUMN);
-	SSD1306_SEND_COMMAND(client, SET_START_PAGE);
+	for (i = 0; i < (height / 8); i++) {
+		for (j = 0; j < width; j++) {
+			u32 array_idx = i * width + j;
 
-	/* Set column start / end */
-	SSD1306_SEND_COMMAND(client, COLUMN_ADDR);
-	SSD1306_SEND_COMMAND(client, 0);
-	SSD1306_SEND_COMMAND(client, (ssd1306->display_width - 1));
+			array[array_idx] = 0;
+			for (k = 0; k < 8; k++) {
+				u32 page_length = width * i;
+				u32 index = page_length + (width * k + j) / 8;
+				u8 byte = *(vmem + index);
+				u8 bit = byte & (1 << (j % 8));
 
-	/* Set page start / end */
-	SSD1306_SEND_COMMAND(client, PAGE_ADDR);
-	SSD1306_SEND_COMMAND(client, 0);
-	SSD1306_SEND_COMMAND(client, (ssd1306->pages_number - 1));
-
-	for (i = 0; i < chunks_num; i++) {
-		SSD1306_SEND_DATA_BLOCK(client, vmem);
-		vmem += SSD1306_BLOCK_SIZE;
+				bit = bit >> (j % 8);
+				array[array_idx] |= bit << k;
+			}
+		}
 	}
+	i2c_master_send(client, ssd1306->display_data, vmem_size + 1);
+
 	return 0;
 }
 
@@ -319,7 +328,7 @@ ssd1306_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	}
 
 	ssd1306 = devm_kzalloc(&client->dev,
-			sizeof(struct ssd1306_data),
+			sizeof_ssd1306_data(SCREEN_WIDTH, SCREEN_HEIGHT),
 			GFP_KERNEL);
 
 	if (!ssd1306) {
@@ -330,7 +339,7 @@ ssd1306_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	ssd1306->client = client;
 	ssd1306->display_width = SCREEN_WIDTH;
 	ssd1306->display_height = SCREEN_HEIGHT;
-	ssd1306->pages_number = PAGES_NUM;
+	ssd1306->display_data[0] = 0x40;
 
 	ssd1306->fbinfo = fbinfo;
 	fbinfo->par = ssd1306;
