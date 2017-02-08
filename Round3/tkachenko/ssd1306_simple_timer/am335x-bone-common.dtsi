@@ -19,34 +19,72 @@
 	};
 
 	leds {
-		compatible = "gpio-leds-tkachenko";
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&user_leds_default>;
+		pinctrl-1 = <&user_leds_sleep>;
+
+		compatible = "gpio-leds";
+		status = "okay";
 
 		led@2 {
 			label = "beaglebone:green:usr0";
 			gpios = <&gpio1 21 GPIO_ACTIVE_HIGH>;
-            led-on = <200>;
-            led-off = <800>;
+			linux,default-trigger = "heartbeat";
+			default-state = "off";
 		};
 
 		led@3 {
 			label = "beaglebone:green:usr1";
 			gpios = <&gpio1 22 GPIO_ACTIVE_HIGH>;
-            led-on = <400>;
-            led-off = <600>;
+			linux,default-trigger = "mmc0";
+			default-state = "off";
 		};
 
 		led@4 {
 			label = "beaglebone:green:usr2";
 			gpios = <&gpio1 23 GPIO_ACTIVE_HIGH>;
-            led-on = <600>;
-            led-off = <400>;
+			linux,default-trigger = "cpu0";
+			default-state = "off";
 		};
 
 		led@5 {
 			label = "beaglebone:green:usr3";
 			gpios = <&gpio1 24 GPIO_ACTIVE_HIGH>;
-            led-on = <800>;
-            led-off = <200>;
+			linux,default-trigger = "mmc1";
+			default-state = "off";
+		};
+	};
+
+	leds_custom {
+		compatible = "gpio-leds-custom";
+		status = "disabled";
+
+		led@2 {
+			label = "beaglebone:green:usr0";
+			gpios = <&gpio1 21 GPIO_ACTIVE_HIGH>;
+			led-on = <200>;
+			led-off = <800>;
+		};
+
+		led@3 {
+			label = "beaglebone:green:usr1";
+			gpios = <&gpio1 22 GPIO_ACTIVE_HIGH>;
+			led-on = <400>;
+			led-off = <600>;
+		};
+
+		led@4 {
+			label = "beaglebone:green:usr2";
+			gpios = <&gpio1 23 GPIO_ACTIVE_HIGH>;
+			led-on = <600>;
+			led-off = <400>;
+		};
+
+		led@5 {
+			label = "beaglebone:green:usr3";
+			gpios = <&gpio1 24 GPIO_ACTIVE_HIGH>;
+			led-on = <800>;
+			led-off = <200>;
 		};
 	};
 
@@ -251,9 +289,9 @@
 
 	status = "okay";
 	clock-frequency = <100000>;
-    
+
     display@3c {
-        compatible = "ssd1306";
+        compatible = "ssd1306_timer";
         reg = <0x3c>;
     };
 };
@@ -467,13 +505,4 @@
 			};
 		};
 	};
-};
-
-/ {
-    glbbb {
-        compatible = "gl,console-heartbeat";
-        status = "okay";
-
-        string-property = "globallogic test message O.Tkachenko";
-    };
 };
