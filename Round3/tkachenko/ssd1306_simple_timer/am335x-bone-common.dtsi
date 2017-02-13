@@ -24,7 +24,7 @@
 		pinctrl-1 = <&user_leds_sleep>;
 
 		compatible = "gpio-leds";
-		status = "disabled";
+		status = "okay";
 
 		led@2 {
 			label = "beaglebone:green:usr0";
@@ -57,7 +57,7 @@
 
 	leds_custom {
 		compatible = "gpio-leds-custom";
-		status = "okay";
+		status = "disabled";
 
 		led@2 {
 			label = "beaglebone:green:usr0";
@@ -119,6 +119,13 @@
 		pinctrl-single,pins = <
 			AM33XX_IOPAD(0x988, PIN_INPUT_PULLUP | MUX_MODE0)	/* i2c0_sda.i2c0_sda */
 			AM33XX_IOPAD(0x98c, PIN_INPUT_PULLUP | MUX_MODE0)	/* i2c0_scl.i2c0_scl */
+		>;
+	};
+
+	i2c1_pins: pinmux_i2c1_pins {
+		pinctrl-single,pins = <
+			AM33XX_IOPAD(0x958, PIN_INPUT_PULLUP | MUX_MODE2)	/* gpio0_4.i2c1_sda */
+			AM33XX_IOPAD(0x95c, PIN_INPUT_PULLUP | MUX_MODE2)	/* gpio0_5.i2c1_scl */
 		>;
 	};
 
@@ -276,6 +283,19 @@
 	};
 };
 
+&i2c1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c1_pins>;
+
+	status = "okay";
+	clock-frequency = <100000>;
+
+    display@3c {
+        compatible = "ssd1306_timer";
+        reg = <0x3c>;
+    };
+};
+
 &i2c2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c2_pins>;
@@ -322,6 +342,22 @@
 			reg = <0 0x100>;
 		};
 	};
+
+    gyro: gyro@68 {
+        compatible = "mpu6050";
+        reg = <0x68>;
+        interrupt-parent = <&gpio1>;
+        interrupts = <17 1>;
+        mount-matrix = "-0.984807753012208",  /* x0 */
+                       "0",                   /* y0 */
+                       "-0.173648177666930",  /* z0 */
+                       "0",                   /* x1 */
+                       "-1",                  /* y1 */
+                       "0",                   /* z1 */
+                       "-0.173648177666930",  /* x2 */
+                       "0",                   /* y2 */
+                       "0.984807753012208";   /* z2 */
+    };
 };
 
 

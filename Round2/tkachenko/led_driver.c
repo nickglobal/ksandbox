@@ -343,7 +343,7 @@ static int gpio_leds_remove(struct platform_device *pdev)
 
 static const struct of_device_id custom_led_of_match[] = {
 	{
-		.compatible = "gpio-leds-tkachenko",
+		.compatible = "gpio-leds-custom",
 	},
 	{ },
 };
@@ -353,7 +353,7 @@ static struct platform_driver gpio_led_driver = {
 	.probe = gpio_leds_probe,
 	.remove = gpio_leds_remove,
 	.driver = {
-		.name = "leds-gpio-tkachenko",
+		.name = "leds-gpio-custom",
 		.of_match_table = of_match_ptr(custom_led_of_match),
 		.owner = THIS_MODULE,
 		},
