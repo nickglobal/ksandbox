@@ -60,6 +60,11 @@
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
 	};
+
+vbat: fixedregulator@1 {
+		compatible = "regulator-fixed";
+		regulator-name = "vbat";
+	};
 };
 
 &am33xx_pinmux {
@@ -288,10 +293,12 @@
 			reg = <0 0x100>;
 		};
 	};
+
 	ssd1306: oled_display@3c {
 		compatible = "ssd1306";
 		reg = <0x3c>;
 	};
+
 	glgyro: glgyro@68 {
 		compatible = "mpu6050";
 		reg = <0x68>;
@@ -311,19 +318,16 @@
 	};
 
 /*
-	ssd1306: oled@3c {
-               compatible = "solomon,ssd1306fb-i2c";
-               reg = <0x3c>;
-               reset-gpios = <&gpio2 7>;
-               reset-active-low;
-               solomon,com-lrremap;
-               solomon,com-invdir;
-               solomon,com-offset = <32>;
-               solomon,width = <128>;
-               solomon,height = <64>;
+oled_ssd1306: oled_ssd1306@3c {
+		compatible = "solomon,ssd1306fb-i2c";
+		reg = <0x3c>;
+		reset-gpios = <&gpio1 16 GPIO_ACTIVE_HIGH>;
+		solomon,height = <64>;
+		solomon,width = <128>;
+		solomon,page-offset = <0>;
+		solomon,com-invdir;
 	};
 */
-               /*pwms = <&pwm 4 3000>;*/
 };
 
 
