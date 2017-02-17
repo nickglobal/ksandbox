@@ -2,7 +2,7 @@ Due to the fact that an exact task has not been formulated, here is my implement
 
 Here are 2 kernel modules: ssd1306_drv_SanB.ko and mpu6050_to_ssd1306.ko
 
-ssd1306_drv_SanB.ko - is the GL ssd1306_drv.ko driver for ssd1306 display with some changes/extentions:
+ssd1306_drv_SanB.ko - is the GL ssd1306_drv.ko driver for ssd1306 display with some changes/extensions:
   1). Screen updating is accelerated by using functions that write data blocks (and not 1 byte) into i2c device.
   2). The function 'ssd1306_print_XYZ()' is added and EXPORTed. It prints on ssd1306 display the data from the Gyroscope device.
 
