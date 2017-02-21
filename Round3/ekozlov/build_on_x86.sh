@@ -1,10 +1,15 @@
 #!/bin/bash -e
 
-export CROSS_COMPILE=$HOME/KernelWorkshop/ops/bbb/module_dbg/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
-export ARCH=arm
-DTB_PATH=$HOME/KernelWorkshop/ops/bbb/module_dbg/KERNEL/arch/arm/boot/dts
 
-MODNAME="ssd1306_drv.ko"
+source ${HOME}/KernelWorkshop/ops/setup-xcompile-env.sh
+
+export CROSS_COMPILE=${ARM_AM335X_TOOLCHAIN_PREFIX}
+export ARCH=arm
+DTB_PATH=${HOME}/KernelWorkshop/ops/bbb/module_dbg/KERNEL/arch/arm/boot/dts
+
+MODULES=("ssd1306_drv.ko" "ssd1306_lcd_drv.ko" "mpu6050_reader.ko")
+USERAPPS=()
+
 
 BBBIP="192.168.7.2"
 
@@ -22,9 +27,15 @@ while [ ! -z "$1"  ] ; do
                 echo "Build module"
                 make
                 ;;
+            --user)
+            	echo "Build userspace app"
+            	make user
+            	;;
             --deploy)
-                echo "Deploy kernel module"
-                expect deploy.exp $MODNAME
+                echo "Deploy kernel module(s)"
+                for M in ${MODULES[@]}; do
+			deploy-on-bbb.exp $M
+		done
                 ;;
             --kconfig)
                 echo "configure kernel"
@@ -34,7 +45,7 @@ while [ ! -z "$1"  ] ; do
             --dtb)
                 echo "configure kernel"
                 make dtb
-                expect deploy.exp $DTB_PATH/am335x-boneblack.dtb
+                deploy-on-bbb.exp $DTB_PATH/am335x-boneblack.dtb
                 ;;
 	    *)
 		echo "No such command"
@@ -43,5 +54,3 @@ while [ ! -z "$1"  ] ; do
         esac
         shift
 done
-
-echo "Done!"
