@@ -7,13 +7,14 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdint.h>
+#include <string.h>
+
 #include "font.h"
 
-#define MPU_DEVICE_PATH "/sys/devices/platform/ocp/4802a000.i2c/i2c-1/1-0068/iio:device0"
+#define MPU6050_DEVICE_PATH	"/sys/devices/platform/ocp/4802a000.i2c/i2c-1/1-0068/iio:device0"
+#define SSD1306_FB_PATH		"/dev/fb0"
 
-//byte_t
-
-/*
+/* file structure of the mpu6050 device representation
 
 root@beaglebone:/sys/devices/platform/ocp/4802a000.i2c/i2c-1/1-0068/iio:device0# ls -l
 total 0
@@ -92,15 +93,9 @@ typedef struct {
 } temp_info_t;
 
 
-void read_field_from_file(const char * fname, void *data)
+static void mpu6050_temp_read(temp_info_t *temp)
 {
-
-}
-
-
-void read_mpu6050_temp(temp_info_t *temp)
-{
-	FILE *f = fopen(MPU_DEVICE_PATH"/in_temp_scale", "r");
+	FILE *f = fopen(MPU6050_DEVICE_PATH"/in_temp_scale", "r");
 	if (!f) {
 		printf("Cannot read file in_temp_scale\n");
 		return;
@@ -109,13 +104,13 @@ void read_mpu6050_temp(temp_info_t *temp)
 	int n = fscanf(f, "%lf", &temp->scale);
 	if (n != 1) {
 		printf("Cannot scanf file in_temp_scale\n");
+		fclose(f);
 		return;
 	}
-	//printf("in_temp_scale = %f\n", temp->scale);
 	fclose(f);
 
 
-	f = fopen(MPU_DEVICE_PATH"/in_temp_offset", "r");
+	f = fopen(MPU6050_DEVICE_PATH"/in_temp_offset", "r");
 	if (!f) {
 		printf("Cannot read file in_temp_offset\n");
 		return;
@@ -124,13 +119,13 @@ void read_mpu6050_temp(temp_info_t *temp)
 	n = fscanf(f, "%d", &temp->offset);
 	if (n != 1) {
 		printf("Cannot scanf file in_temp_offset\n");
+		fclose(f);
 		return;
 	}
-	//printf("in_temp_offset = %d\n", temp->offset);
 	fclose(f);
 
 
-	f = fopen(MPU_DEVICE_PATH"/in_temp_raw", "r");
+	f = fopen(MPU6050_DEVICE_PATH"/in_temp_raw", "r");
 	if (!f) {
 		printf("Cannot read file in_temp_raw\n");
 		return;
@@ -139,28 +134,144 @@ void read_mpu6050_temp(temp_info_t *temp)
 	n = fscanf(f, "%d", &temp->raw);
 	if (n != 1) {
 		printf("Cannot scanf file in_temp_raw\n");
+		fclose(f);
 		return;
 	}
-	//printf("in_temp_raw = %d\n", temp->raw);
 	fclose(f);
 
 	temp->val = (temp->raw + temp->offset) * temp->scale;
-	//printf("temp = %lf\n", temp->val);
-
 }
 
 
-void read_mpu6050 (temp_info_t *temp, accel_info_t *accel, angvel_info_t* angvel)
+static void mpu6050_accel_read(accel_info_t *accel)
 {
-	/*
-	FILE *f = fopen(MPU_DEVICE_PATH"/in_accel_scale");
+	FILE *f;
+	int n;
+
+	f = fopen(MPU6050_DEVICE_PATH"/in_accel_scale", "r");
 	if (!f) {
 		printf("Cannot read file in_accel_scale\n");
 		return;
 	}
 
-	fscanf(f, "%lf", );*/
-	read_mpu6050_temp(temp);
+	n = fscanf(f, "%lf", &accel->scale);
+	if (n != 1) {
+		printf("Cannot scanf file in_accel_scale\n");
+		fclose(f);
+		return;
+	}
+	fclose(f);
+
+
+	f = fopen(MPU6050_DEVICE_PATH"/in_accel_x_raw", "r");
+	if (!f) {
+		printf("Cannot read file in_accel_x_raw\n");
+		return;
+	}
+
+	n = fscanf(f, "%d", &accel->x_raw);
+	if (n != 1) {
+		printf("Cannot scanf file in_accel_x_raw\n");
+		fclose(f);
+		return;
+	}
+	fclose(f);
+
+
+	f = fopen(MPU6050_DEVICE_PATH"/in_accel_y_raw", "r");
+	if (!f) {
+		printf("Cannot read file in_accel_y_raw\n");
+		return;
+	}
+
+	n = fscanf(f, "%d", &accel->y_raw);
+	if (n != 1) {
+		printf("Cannot scanf file in_accel_y_raw\n");
+		fclose(f);
+		return;
+	}
+	fclose(f);
+
+
+	f = fopen(MPU6050_DEVICE_PATH"/in_accel_z_raw", "r");
+	if (!f) {
+		printf("Cannot read file in_accel_z_raw\n");
+		return;
+	}
+
+	n = fscanf(f, "%d", &accel->z_raw);
+	if (n != 1) {
+		printf("Cannot scanf file in_accel_z_raw\n");
+		fclose(f);
+		return;
+	}
+	fclose(f);
+}
+
+
+static void mpu6050_angvel_read(angvel_info_t *angvel)
+{
+	FILE *f;
+	int n;
+
+	f = fopen(MPU6050_DEVICE_PATH"/in_anglvel_scale", "r");
+	if (!f) {
+		printf("Cannot read file in_accel_scale\n");
+		return;
+	}
+
+	n = fscanf(f, "%lf", &angvel->scale);
+	if (n != 1) {
+		printf("Cannot scanf file in_accel_scale\n");
+		fclose(f);
+		return;
+	}
+	fclose(f);
+
+
+	f = fopen(MPU6050_DEVICE_PATH"/in_anglvel_x_raw", "r");
+	if (!f) {
+		printf("Cannot read file in_anglvel_x_raw\n");
+		return;
+	}
+
+	n = fscanf(f, "%d", &angvel->x_raw);
+	if (n != 1) {
+		printf("Cannot scanf file in_anglvel_x_raw\n");
+		fclose(f);
+		return;
+	}
+	fclose(f);
+
+
+	f = fopen(MPU6050_DEVICE_PATH"/in_anglvel_y_raw", "r");
+	if (!f) {
+		printf("Cannot read file in_anglvel_y_raw\n");
+		return;
+	}
+
+	n = fscanf(f, "%d", &angvel->y_raw);
+	if (n != 1) {
+		printf("Cannot scanf file in_anglvel_y_raw\n");
+		fclose(f);
+		return;
+	}
+	fclose(f);
+
+
+	f = fopen(MPU6050_DEVICE_PATH"/in_anglvel_z_raw", "r");
+	if (!f) {
+		printf("Cannot read file in_anglvel_z_raw\n");
+		return;
+	}
+
+	n = fscanf(f, "%d", &angvel->z_raw);
+	if (n != 1) {
+		printf("Cannot scanf file in_anglvel_z_raw\n");
+		fclose(f);
+		return;
+	}
+	fclose(f);
 }
 
 
@@ -168,12 +279,14 @@ enum {
 	SCREEN_WIDTH = 128,
 	SCREEN_HEIGHT = 64,
 	SCREEN_SIZE = SCREEN_WIDTH * SCREEN_HEIGHT / 8, /* 1024 - Screen size in bytes, assuming 1 bit per pixel */
+	SCREEN_COLOR_BLACK = 0,
+	SCREEN_COLOR_WHITE = 1,
 };
 
-uint8_t screen[SCREEN_SIZE];
+static uint8_t g_screen[SCREEN_SIZE];
 
 
-void set_ssd1306_pixel(uint8_t *screen, int x, int y, int val)
+static void ssd1306_pixel_set(uint8_t *screen, int x, int y, int val)
 {
 	int lineal_bit = y * SCREEN_WIDTH + x;
 	int lineal_byte = lineal_bit / 8;
@@ -186,83 +299,7 @@ void set_ssd1306_pixel(uint8_t *screen, int x, int y, int val)
 }
 
 
-void set_ssd1306_line(uint8_t *screen, int x1, int y1, int x2, int y2, int val)
-{
-	int xs, xe, ys, ye;
-
-	if (x1 == x2) {
-		xs = xe = x1;
-		if (y1 == y2) {
-			set_ssd1306_pixel(screen, x1, y1, val);
-			return;
-		} else if (y1 < y2) {
-			xs = y1, ye = y2;
-		} else {
-			xs = y2, ye = y1;
-		}
-
-		for(int y = ys; y <= ye; ++y) {
-			set_ssd1306_pixel(screen, xs, y, val);
-		}
-		return;
-
-	} else if (x1 < x2) {
-		xs = x1, xe = x2;
-	} else {
-		xs = x2, xe = x1;
-	}
-
-	for (int x = xs; x <= xe; ++ x) {
-		int y = ((x2*y1 - x1*y2) - (y1 - y2)*x)/(x2-x1);
-		if (y >= 0 && y < SCREEN_WIDTH)
-			set_ssd1306_pixel(screen, x, y, val);
-	}
-}
-
-#if 0
-void read_ssd1306(uint8_t *screen)
-{
-	FILE *f = fopen("/dev/fb0", "r");
-	//int n = ;
-	fread(screen, SCREEN_SIZE, 1, f);
-	//printf("read %d bytes\n", n);
-	//set_ssd1306_pixel(current_screen, 0, 0, 1);
-	fclose(f);
-}
-
-
-void write_ssd1306(uint8_t *screen)
-{
-/*
-	for (int i = 0; i < SCREEN_SIZE; ++ i) {
-			screen[i] = 0xFF;
-	}
-	screen[0] = screen[1] = screen[2] = screen[3] =
-	screen[SCREEN_SIZE-4] = screen[SCREEN_SIZE-3] = screen[SCREEN_SIZE-2] = screen[SCREEN_SIZE-1] = 0x00;
-
-	set_ssd1306_pixel(screen, 0, 0, 1);
-	set_ssd1306_pixel(screen, SCREEN_WIDTH-1, SCREEN_HEIGHT-1, 1);
-
-	set_ssd1306_pixel(screen, 64, 31, 0);
-	set_ssd1306_pixel(screen, 64, 32, 0);
-	set_ssd1306_pixel(screen, 64, 33, 0);
-
-	set_ssd1306_pixel(screen, 63, 32, 0);
-	set_ssd1306_pixel(screen, 65, 32, 0);
-
-	set_ssd1306_line(screen, 10, 10, 120, 29, 0);
-*/
-	FILE *f = fopen("/dev/fb0", "w");
-	//int n = ;
-	fwrite(screen, SCREEN_SIZE, 1, f);
-	//printf("written %d bytes\n", n);
-	fclose(f);
-
-}
-#endif
-
-
-void wake_up_ssd1306()
+static void ssd1306_wake_up()
 {
 	FILE *f = fopen("/sys/class/graphics/fb0/blank", "w");
 	if (!f) {
@@ -284,61 +321,71 @@ void wake_up_ssd1306()
 	fclose(f);
 }
 
-
-/* Private SSD1306 structure */
-struct dpoz{
-    u16 CurrentX;
-    u16 CurrentY;
-    u8  Inverted;
-    u8  Initialized;
-} g_poz = { .CurrentX = 0, .CurrentY = 0 };
-
-
-void set_pos_ssd1306(int x, int y)
-{
-	g_poz.CurrentX = x;
-	g_poz.CurrentY = y;
-}
-
-
-char putc_ssd1306(uint8_t *screen, char ch, TM_FontDef_t* Font, int color) {
+/* Adapted GL functions for font usage from ssd1306 driver */
+static char ssd1306_putc_at(uint8_t *screen, TM_FontDef_t* font, char ch, int x, int y, int color) {
     unsigned int i, b, j;
-    struct dpoz *poz;
-    poz = &g_poz;
 
     /* Check available space in LCD */
-    if ( SCREEN_WIDTH <= (poz->CurrentX + Font->FontWidth) || SCREEN_HEIGHT <= (poz->CurrentY + Font->FontHeight)) {
+    if ( SCREEN_WIDTH <= (x + font->FontWidth) || SCREEN_HEIGHT <= (y + font->FontHeight)) {
         return 0;
     }
     /* Go through font */
-    for (i = 0; i < Font->FontHeight; i++) {
-        b = Font->data[(ch - 32) * Font->FontHeight + i];
-        for (j = 0; j < Font->FontWidth; j++) {
+    for (i = 0; i < font->FontHeight; i++) {
+        b = font->data[(ch - 32) * font->FontHeight + i];
+        for (j = 0; j < font->FontWidth; j++) {
             if ((b << j) & 0x8000) {
-                set_ssd1306_pixel(screen, poz->CurrentX + j, poz->CurrentY + i, color);
+                ssd1306_pixel_set(screen, x + j, y + i, color);
             } else {
-                set_ssd1306_pixel(screen, poz->CurrentX + j, poz->CurrentY + i, !color);
+                ssd1306_pixel_set(screen, x + j, y + i, !color);
             }
         }
     }
-    /* Increase pointer */
-    poz->CurrentX += Font->FontWidth;
+
     /* Return character written */
     return ch;
 }
 
 
-char puts_ssd1306(uint8_t *screen, char* str, TM_FontDef_t* Font, int color) {
+static char ssd1306_puts_at(uint8_t *screen, TM_FontDef_t* font, char* str, int x, int y, int color) {
     while (*str) { /* Write character by character */
-        if (putc_ssd1306(screen, *str, Font, color) != *str) {
+        if (ssd1306_putc_at(screen, font, *str, x, y, color) != *str) {
             return *str; /* Return error */
         }
+        /* Increase pointer */
+        x += font->FontWidth;
         str++; /* Increase string pointer */
     }
     return *str; /* Everything OK, zero should be returned */
 }
 
+static void ssd1306_degree_sign_draw(uint8_t *screen, int x, int y, int val)
+{
+	if (x < 0 || y < 0 || x+2 > SCREEN_WIDTH || y+2 > SCREEN_HEIGHT)
+		return;
 
+	ssd1306_pixel_set(screen, x+1, y, val);
+	ssd1306_pixel_set(screen, x, y+1, val);
+	ssd1306_pixel_set(screen, x+2, y+1, val);
+	ssd1306_pixel_set(screen, x+1, y+2, val);
+}
+
+static void ssd1306_vert_line(uint8_t *screen, int x, int y1, int y2, int val)
+{
+	int y_min, y_max;
+	if (y1 < y2)
+		y_min = y1, y_max = y2;
+	else
+		y_min = y2, y_max = y1;
+
+	for (int y = y_min; y <= y_max; ++y)
+		ssd1306_pixel_set(screen, x, y, val);
+}
+
+
+
+
+
+/* temp graph */
 enum {
 	tg_x_start = 0,
 	tg_x_end = SCREEN_WIDTH - 1,
@@ -359,7 +406,7 @@ typedef struct {
 	long double t_sum;
 	uint64_t n_measures;
 	uint8_t *screen;
-	char st[tg_buf_size];
+	char str[tg_buf_size];
 } temp_graph_data_t;
 
 temp_graph_data_t g_temp_graph = {
@@ -370,33 +417,11 @@ temp_graph_data_t g_temp_graph = {
 	.t_max = 0.0,
 	.t_sum = 0.0,
 	.n_measures = 0,
-	.screen = screen
+	.screen = g_screen
 };
 
-void screen_draw_degree_sign(uint8_t *screen, int x, int y, int val)
-{
-	if (x < 0 || y < 0 || x+2 > SCREEN_WIDTH || y+2 > SCREEN_HEIGHT)
-		return;
 
-	set_ssd1306_pixel(screen, x+1, y, val);
-	set_ssd1306_pixel(screen, x, y+1, val);
-	set_ssd1306_pixel(screen, x+2, y+1, val);
-	set_ssd1306_pixel(screen, x+1, y+2, val);
-}
-
-static void ssd1306_vert_line(uint8_t *screen, int x, int y1, int y2, int val)
-{
-	int y_min, y_max;
-	if (y1 < y2)
-		y_min = y1, y_max = y2;
-	else
-		y_min = y2, y_max = y1;
-
-	for (int y = y_min; y <= y_max; ++y)
-		set_ssd1306_pixel(screen, x, y, val);
-}
-
-void set_temp_point_ssd1306(temp_graph_data_t *tgd, double temp)
+static void ssd1306_temp_point_set(temp_graph_data_t *tgd, double temp)
 {
 	int y_current;
 
@@ -420,14 +445,14 @@ void set_temp_point_ssd1306(temp_graph_data_t *tgd, double temp)
 	else if (y_current > tg_y_max)
 		y_current = tg_y_max;
 
-	if(tgd->x_current < tg_x_end) {
-		ssd1306_vert_line(tgd->screen, tgd->x_current+1, tg_y_min, tg_y_max, 0);
+	if (tgd->x_current < tg_x_end) {
+		ssd1306_vert_line(tgd->screen, tgd->x_current+1, tg_y_min, tg_y_max, SCREEN_COLOR_WHITE);
 		if (tgd->x_current + 1 < tg_x_end)
-			ssd1306_vert_line(tgd->screen, tgd->x_current+2, tg_y_min, tg_y_max, 0);
+			ssd1306_vert_line(tgd->screen, tgd->x_current+2, tg_y_min, tg_y_max, SCREEN_COLOR_BLACK);
 	}
 
 	ssd1306_vert_line(tgd->screen, tgd->x_current, tg_y_min, tg_y_max , 0);
-	set_ssd1306_pixel(tgd->screen, tgd->x_current, y_current, 1);
+	ssd1306_pixel_set(tgd->screen, tgd->x_current, y_current, 1);
 
 	if (tgd->x_current == tg_x_end)
 		tgd->x_current = tg_x_start;
@@ -436,138 +461,98 @@ void set_temp_point_ssd1306(temp_graph_data_t *tgd, double temp)
 
 
 	int x, y;
-	const int x_font_shift = 7*8, y_font_shift = 10;
+	int 	x_font_shift = TM_Font_7x10.FontWidth*8,
+		y_font_shift = TM_Font_7x10.FontHeight;
 
 	x = 0, y = tg_y_max+1;
-	set_pos_ssd1306(x, y);
-	snprintf(tgd->st, tg_buf_size, "max%.2lf", tgd->t_max);
-	puts_ssd1306(tgd->screen, tgd->st, &TM_Font_7x10, 1);
-	screen_draw_degree_sign(tgd->screen, x+x_font_shift+1, y, 1);
+	snprintf(tgd->str, tg_buf_size, "max%.2lf", tgd->t_max);
+	ssd1306_puts_at(tgd->screen, &TM_Font_7x10, tgd->str, x, y, 1);
+	ssd1306_degree_sign_draw(tgd->screen, x+x_font_shift+1, y, 1);
 
 	x = 0, y += y_font_shift+1;
-	set_pos_ssd1306(x, y);
-	snprintf(tgd->st, tg_buf_size, "min%.2lf", tgd->t_min);
-	puts_ssd1306(tgd->screen, tgd->st, &TM_Font_7x10, 1);
-	screen_draw_degree_sign(tgd->screen, x+x_font_shift+1, y, 1);
+	snprintf(tgd->str, tg_buf_size, "min%.2lf", tgd->t_min);
+	ssd1306_puts_at(tgd->screen, &TM_Font_7x10, tgd->str, x, y, 1);
+	ssd1306_degree_sign_draw(tgd->screen, x+x_font_shift+1, y, 1);
 
 	x = SCREEN_WIDTH-1-x_font_shift-4, y = tg_y_max+1;
-	set_pos_ssd1306(x, y);
-	snprintf(tgd->st, tg_buf_size, "cur%.2lf", temp);
-	puts_ssd1306(tgd->screen, tgd->st, &TM_Font_7x10, 1);
-	screen_draw_degree_sign(tgd->screen, x+x_font_shift+1, y, 1);
+	snprintf(tgd->str, tg_buf_size, "cur%.2lf", temp);
+	ssd1306_puts_at(tgd->screen, &TM_Font_7x10, tgd->str, x, y, 1);
+	ssd1306_degree_sign_draw(tgd->screen, x+x_font_shift+1, y, 1);
 
 	x = SCREEN_WIDTH-1-x_font_shift-4, y += y_font_shift+1;
-	set_pos_ssd1306(x, y);
-	snprintf(tgd->st, tg_buf_size, "avr%.2lf", tgd->t_avr);
-	puts_ssd1306(tgd->screen, tgd->st, &TM_Font_7x10, 1);
-	screen_draw_degree_sign(tgd->screen, x+x_font_shift+1, y, 1);
+	snprintf(tgd->str, tg_buf_size, "avr%.2lf", tgd->t_avr);
+	ssd1306_puts_at(tgd->screen, &TM_Font_7x10, tgd->str, x, y, 1);
+	ssd1306_degree_sign_draw(tgd->screen, x+x_font_shift+1, y, 1);
 }
 
-#if 0
+
+
+static void ssd1306_accell_data_display(accel_info_t *accel, angvel_info_t *angvel)
+{
+	enum { OUT_STR_SZ = 18 };
+
+	int x, y;
+	static char str[OUT_STR_SZ];
+
+	static const char *fmt = "%6s: %+7d";
+
+	x = 4, y = 0;
+	snprintf(str, OUT_STR_SZ, fmt, "ACC X", accel->x_raw);
+	ssd1306_puts_at(g_screen, &TM_Font_7x10, str, x, y, 1);
+
+	y += TM_Font_7x10.FontHeight;
+	snprintf(str, OUT_STR_SZ, fmt, "ACC Y", accel->y_raw);
+	ssd1306_puts_at(g_screen, &TM_Font_7x10, str, x, y, 1);
+
+	y += TM_Font_7x10.FontHeight;
+	snprintf(str, OUT_STR_SZ, fmt, "ACC Z", accel->z_raw);
+	ssd1306_puts_at(g_screen, &TM_Font_7x10, str, x, y, 1);
+
+
+	y += TM_Font_7x10.FontHeight;
+	snprintf(str, OUT_STR_SZ, fmt, "AVEL X", angvel->x_raw);
+	ssd1306_puts_at(g_screen, &TM_Font_7x10, str, x, y, 1);
+
+	y += TM_Font_7x10.FontHeight;
+	snprintf(str, OUT_STR_SZ, fmt, "AVEL Y", angvel->y_raw);
+	ssd1306_puts_at(g_screen, &TM_Font_7x10, str, x, y, 1);
+
+	y += TM_Font_7x10.FontHeight;
+	snprintf(str, OUT_STR_SZ, fmt, "AVEL Z", angvel->z_raw);
+	ssd1306_puts_at(g_screen, &TM_Font_7x10, str, x, y, 1);
+}
+
+
 enum {
-	BUF_SIZE = 64
+	DISPLAY_MODE_TEMP,
+	DISPLAY_MODE_GYRO,
 };
 
-
-void
-test_file_read()
-{
-	int fd;
-	ssize_t n;
-	int nr;
-	int temp_raw;
-	int rc;
-	char buf[BUF_SIZE];
-
-	if ((fd = open(MPU_DEVICE_PATH"/in_temp_raw", O_RDONLY)) == -1 ) {
-		printf("cannot 'open' file\n");
-		return;
-	}
-	printf("file was opened...\n");
-
-	fd_set fset;
-	FD_ZERO(&fset);
-	FD_SET(fd, &fset);
-
-	struct timeval tv = { .tv_sec = 10, .tv_usec = 0 };
-
-
-	while(1) {
-		printf("selecting...\n");
-		rc = select(1, &fset, NULL, NULL, &tv);
-		if (rc == -1) {
-			printf("error in select\n");
-			return;
-		}
-		printf("operating...\n");
-/*
-		void FD_CLR(int fd, fd_set *set);
-		int  FD_ISSET(int fd, fd_set *set);
-*/
-
-
-
-
-		n = read(fd, buf, BUF_SIZE);
-		if (n == -1) {
-			printf("cannot 'read' file\n");
-			return;
-		}
-		lseek(fd, 0, SEEK_SET);
-		printf("read %d bytes\n", n);
-		if (n > BUF_SIZE - 1) {
-			printf("too much data\n");
-			return;
-		}
-		if (n == 0) {
-			continue;
-		}
-		buf[n] = '\0';
-
-		nr = sscanf(buf, "%d", &temp_raw);
-		/*
-		if (nr != 1) {
-			printf("cannot parse data\n");
-			return;
-		}
-		*/
-
-		printf("raw_temp %d\n", temp_raw);
-	}
-
-
-	close(fd);
-}
-#endif
-
-
-static FILE *g_fb;
-volatile static int g_display_mode;
-
-/*
-static inline void close_files(void)
-{
-	printf("closing files...\n");
-	fclose(g_fb);
-}
-*/
+volatile static int g_display_mode = DISPLAY_MODE_TEMP;
+volatile static int g_display_clear = 0;
 sem_t g_sem;
 
-static inline void screen_need_update_set()
+static inline void ssd1306_need_update_set()
 {
 	sem_post(&g_sem);
 }
 
-static void *screen_update_thread(void *arg)
+
+static void *ssd1306_update_thread(void *arg)
 {
-	g_fb = fopen("/dev/fb0", "w");
+	FILE *g_fb = fopen(SSD1306_FB_PATH, "w");
 	if (!g_fb)
 		return NULL;
 
 	while (1) {
 		sem_wait(&g_sem);
 
-		fwrite(screen, SCREEN_SIZE, 1, g_fb);
+		if (g_display_clear) {
+			memset(g_screen, 0, SCREEN_SIZE);
+			g_display_clear = 0;
+		}
+
+		fwrite(g_screen, SCREEN_SIZE, 1, g_fb);
 		rewind(g_fb);
 	}
 
@@ -576,88 +561,79 @@ static void *screen_update_thread(void *arg)
 }
 
 
-enum {
-	DISPLAY_MODE_TEMP,
-	DISPLAY_MODE_GYRO
-};
-
-
 static void *mpu6050_read_thread(void *arg)
 {
-	uint64_t c = 0;
 	temp_info_t temp;
+	accel_info_t accel;
+	angvel_info_t angvel;
 
 	while (1) {
 		if (g_display_mode == DISPLAY_MODE_TEMP) {
-			read_mpu6050_temp(&temp);
-			set_temp_point_ssd1306(&g_temp_graph, temp.val);
+			mpu6050_temp_read(&temp);
+			ssd1306_temp_point_set(&g_temp_graph, temp.val);
 
-			if (c % 1000 == 0)
-				printf("%llu measurements done\n", c);
-			++ c;
-			screen_need_update_set();
+			ssd1306_need_update_set();
+			usleep(200000);
+
 		} else if (g_display_mode == DISPLAY_MODE_GYRO) {
+			mpu6050_accel_read(&accel);
+			mpu6050_angvel_read(&angvel);
 
+			ssd1306_accell_data_display(&accel, &angvel);
+
+			ssd1306_need_update_set();
+			usleep(200000);
 		}
-
-		usleep(200000);
 	}
 
+	return NULL;
+}
+
+
+static void ssd1306_clscr(uint8_t *screen)
+{
+	g_display_clear = 1;
 }
 
 
 int main ()
 {
 	pthread_t tid_screen;
-	pthread_t tid_gyro;
+	pthread_t tid_read;
 
-	//float prev_temp, e_temp = 0.05f;
-
-
-	//int display_mode = DISPLAY_MODE_TEMP;
-
-	//accel_info_t accel; //prev_accel,
-	//angvel_info_t angvel; //prev_angvel,
-
-	//printf("%u\n", sizeof (matrix_t));
-
-	//atexit(close_files);
-
-	wake_up_ssd1306();
-	//set_ssd1306_line(screen, tg_x_start, tg_y_max+1, tg_x_end, tg_y_max+1, 1);
-
-	//set_ssd1306_line(screen, 0, 40, 100, 50, 1);
-	//set_ssd1306_line(screen, 0, 40, 0, 50, 1);
-
-	//test_file_read();
-
-	//read_mpu6050(&temp, &accel, &angvel);
-	//prev_temp = temp.val;
-	printf("temp threshold = %f\n", g_temp_min_delta);
+	ssd1306_clscr(g_screen);
+	ssd1306_wake_up();
+	printf("temp threshold = %lf\n", g_temp_min_delta);
 
 	sem_init(&g_sem, 0, 1);
 	sem_wait(&g_sem);
 
-	pthread_create(&tid_screen, NULL, screen_update_thread, NULL);
-	pthread_create(&tid_gyro, NULL, mpu6050_read_thread, NULL);
+	pthread_create(&tid_screen, NULL, ssd1306_update_thread, NULL);
+	pthread_create(&tid_read, NULL, mpu6050_read_thread, NULL);
+
+	static const char *fmt = "Current display mode is '%s'; 't' - for temp, 'g' - for gyro, 'e' - for exit, 'h' - this message\n";
+	printf(fmt, g_display_mode == DISPLAY_MODE_TEMP ? "TEMP" : "GYRO");
 
 	while (1) {
-		printf("Current display mode is '%s'; 't' - for temp, 'g' - for gyro, 'e' - for exit\n",
-				g_display_mode == DISPLAY_MODE_TEMP ? "TEMP" : "GYRO");
+
 		int c = getchar();
-		printf("%c", c);
 
-		if 	(c == 't')
+		if 	(c == 't') {
 			g_display_mode = DISPLAY_MODE_TEMP;
-		else if (c == 'g')
+			printf(fmt, g_display_mode == DISPLAY_MODE_TEMP ? "TEMP" : "GYRO");
+			ssd1306_clscr(g_screen);
+		} else if (c == 'g') {
 			g_display_mode = DISPLAY_MODE_GYRO;
-		else if (c == 'e')
+			printf(fmt, g_display_mode == DISPLAY_MODE_TEMP ? "TEMP" : "GYRO");
+			ssd1306_clscr(g_screen);
+		} else if (c == 'h') {
+			printf(fmt, g_display_mode == DISPLAY_MODE_TEMP ? "TEMP" : "GYRO");
+		} else if (c == 'e')
 			break;
-
 	}
 
 	pthread_cancel(tid_screen);
-	pthread_cancel(tid_gyro);
+	pthread_cancel(tid_read);
 	sem_close(&g_sem);
 
 	return EXIT_SUCCESS;

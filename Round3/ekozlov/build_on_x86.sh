@@ -7,7 +7,7 @@ export CROSS_COMPILE=${ARM_AM335X_TOOLCHAIN_PREFIX}
 export ARCH=arm
 DTB_PATH=${HOME}/KernelWorkshop/ops/bbb/module_dbg/KERNEL/arch/arm/boot/dts
 
-MODULES=("ssd1306_drv.ko" "ssd1306_lcd_drv.ko" "mpu6050_reader.ko")
+MODULES=("ssd1306_drv.ko")
 USERAPPS=()
 
 
