@@ -1,5 +1,11 @@
+/* This program prints each argument as a separate line
+ * on the OLED display */
 
-//#define DEBUG
+/* Uncomment this for debug version
+ *  (output only 2 lines, output to console instead of OLED)
+ *
+ * #define DEBUG
+ */
 
 #include <errno.h>
 #include <sys/types.h>
@@ -16,8 +22,8 @@
 
 /* value of pixels in file */
 #ifdef DEBUG
-    #define BLACK ('*')
-    #define WHITE (' ')
+    #define BLACK (' ')
+    #define WHITE ('*')
 #else
     #define BLACK (0)
     #define WHITE (0xFF)
@@ -51,6 +57,13 @@ int draw_letter(int lx, int ly, char ch)
       return -1;
    }
 
+   /* check symbol */
+   if ((ch < ' ') || (ch > '~'))
+   {
+	   /* wrong char. print '-' instead */
+	   ch = '-';
+   }
+
    for (y=0; y<LETTER_H; y++)
    {
       for (x=0; x<LETTER_W; x++)
@@ -75,14 +88,12 @@ int save_screen (void)
    write (fd, buf, DISP_W*DISP_H);
    close (fd);
 #else
-   {
-      int i;
-      for (i=0; i<DISP_H; i++)
-      {
-         write (1, buf+DISP_W*i, DISP_W);
-         write (1, "\n", 1);
-      }
-   }
+  int i;
+  for (i=0; i<16; i++)
+  {
+	 write (1, buf+DISP_W*i, DISP_W);
+	 write (1, "\n", 1);
+  }
 #endif
    return 0;
 }
@@ -90,7 +101,7 @@ int save_screen (void)
 /****************** main entry ************************/
 int main(int argc, char *argv[])
 {
-   int l, num, i;
+   int l, num, i, len;
 
    /* default print */
    char *line = "Hello World";
@@ -111,8 +122,14 @@ int main(int argc, char *argv[])
       for (l=0; l<num; l++)
       {
          line = argv[l+1];
-         printf ("draw \"%s\"\n", argv[l+1]);
-         for (i=0; i<strlen(line); i++)
+		 len = strlen(line);
+		 if (len > (DISP_W/LETTER_W))
+		 {
+			 /* truncate lines with display width */
+			 len = DISP_W/LETTER_W;
+		 }
+         printf ("draw [%d] \"%s\"\n", len, argv[l+1]);
+         for (i=0; i<len; i++)
          {
             draw_letter (LETTER_W*i, LETTER_H*l, line[i]);
          }
