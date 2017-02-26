@@ -44,7 +44,6 @@ while [ ! -z "$1"  ] ; do
                 echo "build user app"
                 echo $CROSS_COMPILE
                 make app
-                scp pkdisp debian@${BBBIP}:/home/debian/
                 ;;
             --clean_app)
                 echo "Clean user app"

@@ -10,8 +10,8 @@ the driver creates char device
 this is 1byte per pixel array with horisontal addressing mode
 
 -------Console------
-The 'pkconsole' is a user space program that prints text on
-the OLED screen using pkdisp char device. The pkconsole just
+The 'pkcons' is a user space program that prints text on
+the OLED screen using pkdisp char device. The pkcons just
 prints each argument on a new line
 
 Examples of usage:
