@@ -1,0 +1,28 @@
+Whole system contains of 3 parts:
+- the OLED driver allows draw pixels
+- console app converts strings to picture and draw using driver
+- script - execute task (print date) using console app
+
+
+-------Driver-------
+the driver creates char device
+  /dev/pkdisp
+this is 1byte per pixel array with horisontal addressing mode
+
+-------Console------
+The 'pkconsole' is a user space program that prints text on
+the OLED screen using pkdisp char device. The pkconsole just
+prints each argument on a new line
+
+Examples of usage:
+./pkcons Hello World
+
+will draw
+ +-----------+
+ | Hello     |
+ | World     |
+ |           |
+ +-----------+
+
+-------Script-------
+  - clock.sh  - prints current date on the screen

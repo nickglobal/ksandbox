@@ -14,7 +14,7 @@ while [ ! -z "$1"  ] ; do
                 ;;
             --clean)
                 echo "Clean module sources"
-                make ARCH=arm clean
+                make ARCH=arm clean_module
                 ;;
             --module)
                 echo "Build module"
@@ -44,7 +44,7 @@ while [ ! -z "$1"  ] ; do
                 echo "build user app"
                 echo $CROSS_COMPILE
                 make app
-                scp prog debian@${BBBIP}:/home/debian/
+                scp pkdisp debian@${BBBIP}:/home/debian/
                 ;;
             --clean_app)
                 echo "Clean user app"

@@ -2,7 +2,7 @@ CONFIG_MODULE_SIG=n
 
 obj-m += ssd1306_drv.o
 #obj-m += pkbbb.o
-user_app := prog
+user_app := pkdisp
 
 KDIR ?= `pwd`/KERNEL/
 
@@ -29,4 +29,4 @@ app: $(user_app).c
 clean_app:
 	rm $(user_app)
 
-.PHONY: clean default config dtb user clean_user
+.PHONY: clean_module default config dtb user clean_user
