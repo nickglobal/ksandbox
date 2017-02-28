@@ -201,6 +201,30 @@ static char put_s( uint8_t* fb, TM_FontDef_t* font, char* str, int x, int y)
 	return *str; /* Everything is OK, zero should be returned */
 }
 
+static void draw_vert_line(uint8_t *screen, int x, int y1, int y2, int val)
+{
+	int y_min, y_max, y;
+	if (y1 < y2)
+		y_min = y1, y_max = y2;
+	else
+		y_min = y2, y_max = y1;
+
+	for (y = y_min; y <= y_max; ++y)
+		draw_pixel(screen, x, y, val);
+}
+
+static void draw_horizontal_line(uint8_t *screen, int y, int x1, int x2, int val)
+{
+	int x_min, x_max, x;
+	if (x1 < x2)
+		x_min = x1, x_max = x2;
+	else
+		x_min = x2, x_max = x1;
+
+	for (x = x_min; x <= x_max; ++x)
+		draw_pixel(screen, x, y, val);
+
+}
 
 static void read_accel()
 {
@@ -348,6 +372,8 @@ int main(int argc, char *argv[])
 	}
 
         memset(pAccelData->fbp, 0, screensize);
+        draw_vert_line(pAccelData->fbp, Font->FontWidth*12, 0, Font->FontHeight*5, 1);
+        draw_horizontal_line(pAccelData->fbp, Font->FontHeight*5 , 0, Font->FontWidth*12, 1);
         init_timer();
         while (1) {
 		int c = getchar();
