@@ -28,7 +28,7 @@
 typedef struct {
 	uint8_t FontWidth;     /*!< Font width in pixels */
 	uint8_t FontHeight;    /*!< Font height in pixels */
-    const uint16_t *data;  /*!< Pointer to data font data array */
+        const uint16_t *data;  /*!< Pointer to data font data array */
 } TM_FontDef_t;
 
 const uint16_t TM_Font7x10[] = {
@@ -194,10 +194,10 @@ static char put_c(uint8_t *fb, TM_FontDef_t* font, char ch, int x, int y)
 static char put_s( uint8_t* fb, TM_FontDef_t* font, char* str, int x, int y)
 {
 	while (*str) {
-		    put_c(fb, font, *str, x, y);
+                        put_c(fb, font, *str, x, y);
 			x += Font->FontWidth;
 			str++;
-		}
+        }
 	return *str; /* Everything is OK, zero should be returned */
 }
 
@@ -288,7 +288,7 @@ static int init_timer(void)
 	sigev.sigev_signo = SIGRTMIN;
 	sigev.sigev_value.sival_int = 1;
 
-	if (timer_create(CLOCK_MONOTONIC, &sigev, &tid) == -1){
+	if (timer_create(CLOCK_MONOTONIC, &sigev, &tid) == -1) {
 	  perror("timer create error");
 	  return -1;
 	}
@@ -299,7 +299,7 @@ static int init_timer(void)
 	ival.it_value.tv_nsec = 0;
 	ival.it_interval.tv_sec = 1;
 	ival.it_interval.tv_nsec = 0;
-	if (timer_settime(tid, 0, &ival, NULL) == -1){
+	if (timer_settime(tid, 0, &ival, NULL) == -1) {
 	  perror("timer settime error");
 	  return -1;
 	}
@@ -347,10 +347,9 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	memset(pAccelData->fbp, 0, screensize);
-	//pAccelData->fbp = fbp;
-    init_timer();
-    while (1) {
+        memset(pAccelData->fbp, 0, screensize);
+        init_timer();
+        while (1) {
 		int c = getchar();
 		if(pAccelData->flag_read) {
 			read_accel();
@@ -361,13 +360,13 @@ int main(int argc, char *argv[])
 		}
 		if (c == 'e')
 			break;
-    }
+        }
 
-    printf("Finish\n");
-    timer_delete(pAccelData->timerid);
+        printf("Finish\n");
+        timer_delete(pAccelData->timerid);
     /* Close fbdev */
-	munmap(fbp, screensize);
-	close(fb_fd);
+        munmap(fbp, screensize);
+        close(fb_fd);
 
-	return 0;
+        return 0;
 }
